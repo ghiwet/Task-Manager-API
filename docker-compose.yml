@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: taskmanager_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: taskdb
+      POSTGRES_USER: taskuser
+      POSTGRES_PASSWORD: taskpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    container_name: taskmanager_adminer
+    restart: always
+    ports:
+      - "8081:8080"
+
+#  app:
+#    build: .
+#    container_name: taskmanager_app
+#    depends_on:
+#      - postgres
+#    environment:
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/taskdb
+#      SPRING_DATASOURCE_USERNAME: taskuser
+#      SPRING_DATASOURCE_PASSWORD: taskpass
+#    ports:
+#      - "8080:8080"
+
+volumes:
+  postgres_data:
