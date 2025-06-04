@@ -2,6 +2,9 @@ name: Manual Java Security Scan
 
 on:
   workflow_dispatch:  # Manually triggered
+permissions:
+  contents: read
+  issues: write  
 
 jobs:
   codeql:
@@ -129,6 +132,15 @@ jobs:
         run: |
           java -jar target/taskmanager-0.0.1-SNAPSHOT.jar --server.address=0.0.0.0 &
           sleep 20  # Wait for server to be ready
+
+      - name: Wait for app to be ready
+        run: |
+          echo "Waiting for app to be ready..."
+          for i in {1..10}; do
+            curl -sSf http://localhost:8080/swagger-ui/index.html && echo "App is ready!" && exit 0
+            sleep 5
+          done
+          echo "App not ready in time!" && exit 1
 
       - name: Run ZAP baseline scan
         uses: zaproxy/action-baseline@v0.11.0
