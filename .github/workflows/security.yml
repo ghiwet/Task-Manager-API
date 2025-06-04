@@ -67,12 +67,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
       - name: Run OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
@@ -111,15 +105,32 @@ jobs:
     name: OWASP ZAP Baseline Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Run ZAP Baseline Scan
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build the app
+        run: mvn clean package
+
+      - name: Start the app in background
+        run: |
+          java -jar target/taskmanager-0.0.1-SNAPSHOT.jar --server.address=0.0.0.0 &
+          sleep 20  # Wait for server to be ready
+
+      - name: Run ZAP baseline scan
         uses: zaproxy/action-baseline@v0.11.0
         with:
           target: 'http://localhost:8080/swagger-ui/index.html'
           fail_action: false
-          cmd_options: '-a'
+          cmd_options: '-J report_json.json -w report_md.md -r report_html.html -a'
 
-      - name: Upload ZAP Report
+      - name: Upload ZAP HTML report
         uses: actions/upload-artifact@v4
         with:
-          name: zap-report
+          name: zap-html-report
           path: report_html.html
