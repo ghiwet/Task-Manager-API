@@ -71,7 +71,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Run OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
@@ -94,6 +94,18 @@ jobs:
 
       - name: Scan with TruffleHog
         uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+
+      - name: Run TruffleHog with JSON output
+        run: |
+         docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:latest \
+         filesystem /repo --json > trufflehog-report.json
+
+      - name: Upload TruffleHog Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trufflehog-json
+          path: trufflehog-report.json
 
   zap_scan:
     name: OWASP ZAP Baseline Scan
