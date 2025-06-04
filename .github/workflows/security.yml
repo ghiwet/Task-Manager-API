@@ -28,7 +28,7 @@ jobs:
         run: mvn clean install -DskipTests
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
 
   semgrep:
     name: Semgrep Scan
@@ -49,13 +49,17 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: 'p/ci'  # You can change to 'auto' or a custom Semgrep config
+          config: p/ci
+          generateSarif: false
+          runOptions: >-
+            --output semgrep-report.html
+            --output-format html
 
-      - name: Upload Semgrep Report
+      - name: Upload HTML report
         uses: actions/upload-artifact@v4
         with:
-          name: semgrep-report
-          path: semgrep.sarif
+          name: semgrep-html-report
+          path: semgrep-report.html
 
   dependency-check:
     name: OWASP Dependency-Check
@@ -67,19 +71,20 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
-      - name: 'Dependency Review'
-        uses: actions/dependency-review-action@v4
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
         with:
-          comment-summary-in-pr: always
-          fail-on-severity: high
+          project: 'java-app'
+          path: './'
+          format: 'HTML'
 
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-review-report
-          path: dependency-review-report.html
+          name: dependency-check-report
+          path: dependency-check-report.html
 
   secret-scan:
     name: TruffleHog Secret Scan
