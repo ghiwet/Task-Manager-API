@@ -113,6 +113,14 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          
+      - name: Install Docker Compose
+        run: |
+           sudo apt-get update
+           sudo apt-get install -y docker-compose
+           
+      - name: Start Containers
+        run: docker-compose --project tast-manager -f docker-compose.yml up --detach    
 
       - name: Build the app
         run: mvn clean package
