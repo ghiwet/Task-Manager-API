@@ -142,11 +142,6 @@ jobs:
           done
           echo "App not ready in time!" && exit 1
 
-      - name: Prepare ZAP report files
-        run: |
-          touch report_json.json report_md.md report_html.html
-          chmod a+w report_json.json report_md.md report_html.html
-
       - name: Set write permissions on workspace
         run: sudo chmod -R a+w ${{ github.workspace }}
 
@@ -156,14 +151,5 @@ jobs:
           target: 'http://localhost:8080/swagger-ui/index.html'
           fail_action: false
           rules_file_name: '.zap/rules.tsv'
-          artifact_name: zap-scan
-          cmd_options: '-J report_json.json -w report_md.md -r report_html.html -a'
-
-      - name: Upload ZAP HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-html-report
-          path: |
-            report_html.html
-            report_md.md
-            report_json.json
+          artifact_name: zap-scan-report
+          cmd_options: '-r report_html.html -a'
