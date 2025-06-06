@@ -142,6 +142,11 @@ jobs:
           done
           echo "App not ready in time!" && exit 1
 
+      - name: Prepare ZAP report files
+        run: |
+          touch report_html.html
+          chmod a+w report_json.json report_md.md report_html.html
+
       - name: Run ZAP baseline scan
         uses: zaproxy/action-baseline@v0.11.0
         with:
@@ -153,4 +158,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zap-html-report
-          path: report_html.html
+          path: |
+            report_html.html
+            report_md.md
+            report_json.json
