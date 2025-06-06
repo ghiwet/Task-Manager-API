@@ -27,12 +27,11 @@ jobs:
   zap-full-scan:
     name: OWASP ZAP Full Scan
     runs-on: ubuntu-latest
-
     steps:
       - name: Run ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.12.0
         with:
-           target: 'https://www.ppt.doctorbox.de'
+          target: 'https://www.ppt.doctorbox.de'
           fail_action: false
           allow_issue_writing: false
           rules_file_name: '.zap/rules.tsv'
