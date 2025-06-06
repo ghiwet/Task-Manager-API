@@ -104,7 +104,7 @@ jobs:
           name: trufflehog-json
           path: trufflehog-report.json
 
-  zap_scan:
+  zap-scan:
     name: OWASP ZAP Baseline Scan
     runs-on: ubuntu-latest
     steps:
