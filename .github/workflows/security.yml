@@ -151,10 +151,11 @@ jobs:
         run: sudo chmod -R a+w ${{ github.workspace }}
 
       - name: Run ZAP baseline scan
-        uses: zaproxy/action-baseline@v0.11.0
+        uses: zaproxy/action-baseline@v0.14.0
         with:
           target: 'http://localhost:8080/swagger-ui/index.html'
           fail_action: false
+          artifact_name: zap-scan
           cmd_options: '-J report_json.json -w report_md.md -r report_html.html -a'
 
       - name: Upload ZAP HTML report
