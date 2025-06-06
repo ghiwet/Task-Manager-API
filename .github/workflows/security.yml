@@ -150,6 +150,7 @@ jobs:
         with:
           target: 'http://localhost:8080/swagger-ui/index.html'
           fail_action: false
+          allow_issue_writing: false
           rules_file_name: '.zap/rules.tsv'
           artifact_name: zap-scan-report
           cmd_options: '-r report_html.html -a'
