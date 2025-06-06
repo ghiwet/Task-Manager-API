@@ -144,7 +144,7 @@ jobs:
 
       - name: Prepare ZAP report files
         run: |
-          touch report_html.html
+          touch report_json.json report_md.md report_html.html
           chmod a+w report_json.json report_md.md report_html.html
 
       - name: Run ZAP baseline scan
