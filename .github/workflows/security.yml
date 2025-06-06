@@ -147,6 +147,9 @@ jobs:
           touch report_json.json report_md.md report_html.html
           chmod a+w report_json.json report_md.md report_html.html
 
+      - name: Set write permissions on workspace
+        run: sudo chmod -R a+w ${{ github.workspace }}
+
       - name: Run ZAP baseline scan
         uses: zaproxy/action-baseline@v0.11.0
         with:
