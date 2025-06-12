@@ -10,7 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -25,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@WithMockUser(username = "user")
 class TaskControllerTest {
 
 
@@ -91,9 +93,18 @@ class TaskControllerTest {
         assertEquals(responseTask.getId(), id);
         assertEquals("Modified Title", responseTask.getTitle());
     }
-
     @Test
     @Order(4)
+    void testDeleteTaskForbidden() throws Exception {
+        Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
+
+        mockMvc.perform(delete("/api/tasks/" + task.getId()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(5)
+    @WithMockUser(username = "admin", roles = "ADMIN")
     void testDeleteTask() throws Exception {
         Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
 
@@ -101,7 +112,7 @@ class TaskControllerTest {
                 .andExpect(status().isOk());
     }
     @Test
-    @Order(5)
+    @Order(6)
     void testGetTaskNotFound() throws Exception {
 
         mockMvc.perform(get("/api/tasks/" + id + 1 ))
