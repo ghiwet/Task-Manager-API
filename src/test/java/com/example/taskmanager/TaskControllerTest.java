@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -52,7 +53,7 @@ class TaskControllerTest {
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(taskCreateDto)))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Test Title"));
     }
 
@@ -99,5 +100,14 @@ class TaskControllerTest {
         mockMvc.perform(delete("/api/tasks/" + task.getId()))
                 .andExpect(status().isOk());
     }
+    @Test
+    @Order(5)
+    void testGetTaskNotFound() throws Exception {
+
+        mockMvc.perform(get("/api/tasks/" + id + 1 ))
+                .andExpect(status().isNotFound());
+
+    }
+
 }
 

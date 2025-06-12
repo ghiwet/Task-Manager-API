@@ -42,7 +42,7 @@ public class TaskService {
     }
 
     public Task findTaskById(Long id) {
-        return taskRepository.findById(id).orElse(new Task());
+        return taskRepository.findById(id).orElse(null);
     }
 
     public void deleteTask(Task task) {
