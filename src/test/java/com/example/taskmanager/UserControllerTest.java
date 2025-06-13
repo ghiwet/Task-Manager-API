@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@WithMockUser(username = "user1")
 public class UserControllerTest {
 
     @Autowired
@@ -83,7 +84,6 @@ public class UserControllerTest {
 
     @Test
     @Order(2)
-    @WithMockUser(username = "user1")
     void testGetUser() throws Exception {
         MvcResult result = mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isOk())
@@ -105,7 +105,6 @@ public class UserControllerTest {
 
     @Test
     @Order(4)
-    @WithMockUser(username = "user1")
     void testUpdateUser() throws Exception {
         Map<String, Object> user = Map.of(
                 "password", "newPass"

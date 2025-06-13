@@ -1,12 +1,10 @@
 package com.example.taskmanager.controller;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-
-import java.security.Principal;
 
 @Controller
 public class LoginController {
@@ -16,10 +14,9 @@ public class LoginController {
     }
 
     @GetMapping("/dashboard")
-    public String dashboard(Model model, Principal principal) {
-        model.addAttribute("username", principal.getName());
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        model.addAttribute("roles", auth.getAuthorities());
-        return "dashboard";
+    public String dashboard(Model model, OAuth2AuthenticationToken authentication) {
+        OAuth2User user = authentication.getPrincipal();
+        model.addAttribute("name", user.getAttribute("name"));
+        return "dashboard"; // Show a dashboard after login
     }
 }
