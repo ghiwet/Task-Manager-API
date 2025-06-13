@@ -159,22 +159,4 @@ public class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNoContent());
     }
-
-//    @Test
-//    @Order(5)
-//    @WithMockUser(username = "admin", roles = "ADMIN")
-//    void testDeleteTask() throws Exception {
-//        Task task = userRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
-//
-//        mockMvc.perform(delete("/api/tasks/" + task.getId()))
-//                .andExpect(status().isOk());
-//    }
-//    @Test
-//    @Order(6)
-//    void testGetTaskNotFound() throws Exception {
-//
-//        mockMvc.perform(get("/api/tasks/" + id + 1 ))
-//                .andExpect(status().isNotFound());
-//
-//    }
 }
