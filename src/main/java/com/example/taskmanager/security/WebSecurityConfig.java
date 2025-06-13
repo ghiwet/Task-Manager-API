@@ -1,8 +1,6 @@
 package com.example.taskmanager.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,16 +16,21 @@ public class WebSecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/swagger-ui/index.html",
-                                "/swagger-ui/**"
-                        ).permitAll()
-                        .requestMatchers(HttpMethod.DELETE, "/api/tasks/**").hasRole("ADMIN")
-                        .requestMatchers("/api/tasks/**").authenticated()
-                        .anyRequest().permitAll()
+                        .requestMatchers("/login", "/register", "/css/**", "/js/*").permitAll()
+                        .requestMatchers("/api/tasks/**").hasRole("USER")
+                        .anyRequest().authenticated()
                 )
-                .httpBasic(Customizer.withDefaults());
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .defaultSuccessUrl("/dashboard", true)
+                        .permitAll()
+                )
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl("/login?logout")
+                        .permitAll()
+                );
+
         return http.build();
     }
 

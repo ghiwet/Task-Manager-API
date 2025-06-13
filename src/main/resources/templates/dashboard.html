@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+<h1 th:text="'Welcome, ' + ${username} + '!'"></h1>
+
+<p>Your roles:</p>
+<ul>
+    <li th:each="role : ${roles}" th:text="${role.authority}"></li>
+</ul>
+
+<!-- Conditional rendering -->
+<div th:if="${#lists.contains(roles.?[authority == 'ROLE_ADMIN'], {authority: 'ROLE_ADMIN'})}">
+    <p>This is the admin panel.</p>
+</div>
+
+<!-- Swagger UI Link -->
+<p>
+    <a href="/swagger-ui/index.html" target="_blank">Open Swagger API Documentation</a>
+</p>
+
+<form th:action="@{/logout}" method="post">
+    <button type="submit">Logout</button>
+</form>
+</body>
+</html>
