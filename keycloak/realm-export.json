@@ -1,0 +1,60 @@
+[
+  {
+    "id": "myrealm",
+    "realm": "myrealm",
+    "enabled": true,
+    "clients": [
+      {
+        "clientId": "springboot-app",
+        "enabled": true,
+        "publicClient": false,
+        "secret": "secret123",
+        "redirectUris": ["http://localhost:8080/swagger-ui/oauth2-redirect.html"],
+        "protocol": "openid-connect",
+        "standardFlowEnabled": true
+      }
+    ],
+    "roles": {
+      "realm": [
+        {
+          "name": "USER"
+        },
+        {
+          "name": "ADMIN"
+        }
+      ]
+    },
+    "users": [
+      {
+        "username": "user1",
+        "firstName": "user1",
+        "lastName": "test",
+        "email": "user1@gmail.com",
+        "enabled": true,
+        "credentials": [
+          {
+            "type": "password",
+            "value": "userpass",
+            "temporary": false
+          }
+        ],
+        "realmRoles": ["USER"]
+      },
+      {
+        "username": "admin1",
+        "firstName": "admin1",
+        "lastName": "test",
+        "email": "admin1@gmail.com",
+        "enabled": true,
+        "credentials": [
+          {
+            "type": "password",
+            "value": "adminpass",
+            "temporary": false
+          }
+        ],
+        "realmRoles": ["USER", "ADMIN"]
+      }
+    ]
+  }
+]
