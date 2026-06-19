@@ -20,7 +20,7 @@ public class AppUser {
     private Long id;
 
     @Version
-    int version;
+    private Integer version;
 
     private String username;
 

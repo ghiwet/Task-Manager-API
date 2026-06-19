@@ -19,9 +19,10 @@ A Spring Boot RESTful backend for managing tasks and users with support for mult
 
 ## 🏗️ Tech Stack
 
-- Java 21+
-- Spring Boot
-- Spring Security
+- Java 25+
+- Spring Boot 4.1
+- Spring Framework 7
+- Spring Security 7
 - Spring Data JPA
 - Flyway
 - PostgreSQL
@@ -86,20 +87,19 @@ To enable OAuth2 authentication using Google and GitHub, follow these steps to r
    - Authorized redirect URIs: `http://localhost:8080/login/oauth2/code/google`
 7. Click **Create** to get: `Client ID` and `Client Secret`
 8. Add these to the `application.properties`
- ### 🔐 OAuth2 Setup application.properties
-Add your `Client ID` and `Client Secret` to the variables in the `application.properties` if you want authentication with Google and , GitHub, or comment them out if you don't need them
-```
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+ ### 🔐 OAuth2 Setup
+Keycloak works out of the box with `docker-compose up -d` (no extra config needed).
 
-spring.security.oauth2.client.registration.google.client-id= ${GOOGLE_CLIENT_ID}
-spring.security.oauth2.client.registration.google.client-secret=${GOOGLE_CLIENT_SECRET}
+To enable GitHub and Google OAuth2, set the environment variables and activate the `oauth2` profile:
+```bash
+export GITHUB_CLIENT_ID=your-id
+export GITHUB_CLIENT_SECRET=your-secret
+export GOOGLE_CLIENT_ID=your-id
+export GOOGLE_CLIENT_SECRET=your-secret
 
-spring.security.oauth2.client.registration.github.client-id=${GITHUB_CLIENT_ID}
-spring.security.oauth2.client.registration.github.client-secret=${GITHUB_CLIENT_SECRET
+./mvnw spring-boot:run -Dspring-boot.run.profiles=oauth2
 ```
+The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 ## 🚦 Getting Started
 

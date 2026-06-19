@@ -20,7 +20,7 @@ public class Task {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Version
-    int version;
+    private Integer version;
 
     @NotBlank
     private String title;

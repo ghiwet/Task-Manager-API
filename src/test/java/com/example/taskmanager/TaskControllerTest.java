@@ -4,20 +4,19 @@ import com.example.taskmanager.dto.TaskCreateDto;
 import com.example.taskmanager.dto.TaskDto;
 import com.example.taskmanager.model.Task;
 import com.example.taskmanager.repository.TaskRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,15 +25,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@WithMockUser(username = "user")
 class TaskControllerTest {
-
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper jsonMapper;
 
     @Autowired
     private TaskRepository taskRepository;
@@ -51,10 +48,10 @@ class TaskControllerTest {
     void testCreateTask() throws Exception {
         TaskCreateDto taskCreateDto = new TaskCreateDto("Test Title", "Test Description", true);
 
-
         mockMvc.perform(post("/api/tasks")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(taskCreateDto)))
+                        .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Test Title"));
     }
@@ -64,12 +61,12 @@ class TaskControllerTest {
     void testGetTask() throws Exception {
         Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
 
-
-        MvcResult result = mockMvc.perform(get("/api/tasks/" + task.getId()))
+        MvcResult result = mockMvc.perform(get("/api/tasks/" + task.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        TaskDto responseTask = objectMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
+        TaskDto responseTask = jsonMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
 
         assertNotNull(responseTask.getId());
         assertEquals("Fetch Title", responseTask.getTitle());
@@ -83,42 +80,43 @@ class TaskControllerTest {
 
         MvcResult result = mockMvc
                 .perform(put("/api/tasks/" + id)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(taskCreateDto)))
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        TaskDto responseTask = objectMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
+        TaskDto responseTask = jsonMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
 
         assertEquals(responseTask.getId(), id);
         assertEquals("Modified Title", responseTask.getTitle());
     }
+
     @Test
     @Order(4)
     void testDeleteTaskForbidden() throws Exception {
         Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
 
-        mockMvc.perform(delete("/api/tasks/" + task.getId()))
+        mockMvc.perform(delete("/api/tasks/" + task.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @Order(5)
-    @WithMockUser(username = "admin", roles = "ADMIN")
     void testDeleteTask() throws Exception {
         Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
 
-        mockMvc.perform(delete("/api/tasks/" + task.getId()))
+        mockMvc.perform(delete("/api/tasks/" + task.getId())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isOk());
     }
+
     @Test
     @Order(6)
     void testGetTaskNotFound() throws Exception {
-
-        mockMvc.perform(get("/api/tasks/" + id + 1 ))
+        mockMvc.perform(get("/api/tasks/" + id + 1)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
-
     }
-
 }
-

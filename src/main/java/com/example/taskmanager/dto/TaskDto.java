@@ -6,7 +6,7 @@ import lombok.Data;
 @Data
 public class TaskDto {
     private Long id;
-    private int version;
+    private Integer version;
 
     @NotBlank
     private String title;
