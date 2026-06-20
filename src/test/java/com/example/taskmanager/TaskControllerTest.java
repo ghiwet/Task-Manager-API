@@ -130,22 +130,39 @@ class TaskControllerTest {
 
     @Test
     @Order(6)
-    void testDeleteTaskForbiddenForNonAdmin() throws Exception {
+    void testDeleteTaskByDifferentUserReturnsNotFound() throws Exception {
         mockMvc.perform(delete("/api/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isForbidden());
+                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     @Order(7)
-    void testDeleteTaskByAdmin() throws Exception {
+    void testDeleteOwnTask() throws Exception {
         mockMvc.perform(delete("/api/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNoContent());
     }
 
     @Test
     @Order(8)
+    void testDeleteTaskByAdmin() throws Exception {
+        TaskCreateDto dto = new TaskCreateDto("Admin Delete Target", "Desc", false);
+        MvcResult result = mockMvc.perform(post("/api/tasks")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(dto)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        TaskDto created = jsonMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
+
+        mockMvc.perform(delete("/api/tasks/" + created.getId())
+                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(9)
     void testGetTaskNotFound() throws Exception {
         mockMvc.perform(get("/api/tasks/99999")
                         .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
@@ -153,7 +170,7 @@ class TaskControllerTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     void testFindTasksPaginated() throws Exception {
         taskRepository.deleteAll();
 
@@ -176,7 +193,7 @@ class TaskControllerTest {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     void testFindTasksOnlyReturnsOwnedTasks() throws Exception {
         mockMvc.perform(get("/api/tasks")
                         .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))

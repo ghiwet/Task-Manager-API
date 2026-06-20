@@ -50,8 +50,10 @@ public class TaskController {
     }
 
     @DeleteMapping(path = "{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable(name = "id") Long id) {
-        taskService.deleteTask(id);
+    public ResponseEntity<Void> deleteTask(@PathVariable(name = "id") Long id, Authentication authentication) {
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        taskService.deleteTask(id, authentication.getName(), isAdmin);
         return ResponseEntity.noContent().build();
     }
 }

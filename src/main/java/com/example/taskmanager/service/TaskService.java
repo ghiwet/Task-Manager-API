@@ -68,13 +68,12 @@ public class TaskService {
         return toDto(task);
     }
 
-    public Task findTaskById(Long id) {
-        return taskRepository.findById(id)
-                .orElseThrow(() -> new TaskNotFoundException("Task with ID " + id + " not found"));
-    }
-
-    public void deleteTask(Long id) {
-        Task task = findTaskById(id);
+    public void deleteTask(Long id, String owner, boolean isAdmin) {
+        Task task = isAdmin
+                ? taskRepository.findById(id)
+                        .orElseThrow(() -> new TaskNotFoundException("Task with ID " + id + " not found"))
+                : taskRepository.findByIdAndOwner(id, owner)
+                        .orElseThrow(() -> new TaskNotFoundException("Task with ID " + id + " not found"));
         publishEvent(task, TaskEventType.DELETED);
         taskRepository.delete(task);
     }

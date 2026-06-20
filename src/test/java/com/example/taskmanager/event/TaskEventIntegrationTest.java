@@ -134,7 +134,7 @@ class TaskEventIntegrationTest {
         TaskDto created = taskService.createTask(new TaskCreateDto("Delete Me", "Desc", false), TEST_OWNER);
         records.poll(10, TimeUnit.SECONDS);
 
-        taskService.deleteTask(created.getId());
+        taskService.deleteTask(created.getId(), TEST_OWNER, false);
 
         ConsumerRecord<String, TaskEvent> record = records.poll(10, TimeUnit.SECONDS);
         assertThat(record).isNotNull();
