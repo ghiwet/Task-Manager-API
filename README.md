@@ -1,19 +1,21 @@
 # 📋 Task Manager API
 
-A Spring Boot RESTful backend for managing tasks and users with support for multiple authentication strategies: Basic Auth, Form-based Login, and OAuth2 (Google, GitHub, Keycloak). Flyway is used for database versioning, and Swagger provides interactive API documentation.
+A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentication (Google, GitHub, Keycloak), Kafka event-driven notifications, task ownership, pagination, and Testcontainers-based testing. Flyway is used for database versioning, and Swagger provides interactive API documentation.
 
 ---
 
 ## 🚀 Features
 
 - ✅ CRUD operations for tasks and users
-- 🔐 Multiple authentication modes:
-  - Basic Auth (with in-memory/JDBC users)
-  - Form-based login
-  - OAuth2 login (Google, GitHub, Keycloak)
+- 🔐 OAuth2 authentication (Google, GitHub, Keycloak) + JWT resource server
+- 👤 Task ownership — users only see and modify their own tasks
+- 🗑️ Two-tier delete — users delete own tasks, admins delete any task
+- 📄 Paginated task listing with sorting
+- 📨 Kafka event-driven notifications (CREATED, UPDATED, COMPLETED, DELETED)
+- 💀 Dead letter topic (DLT) for failed message handling
 - 🗃️ PostgreSQL database with Flyway migrations
 - 📑 Swagger UI for API exploration
-- 🧪 Unit and integration tests with MockMvc
+- 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
 
@@ -26,8 +28,10 @@ A Spring Boot RESTful backend for managing tasks and users with support for mult
 - Spring Data JPA
 - Flyway
 - PostgreSQL
+- Apache Kafka 4.3 (KRaft mode)
 - Swagger (springdoc-openapi)
-- Docker and Docker Compose (for PostgreSQL and Keycloak)
+- Testcontainers
+- Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui)
 
 ---
 
@@ -36,10 +40,12 @@ A Spring Boot RESTful backend for managing tasks and users with support for mult
 src
 ├── main
 │ ├── java/com/example/taskmanager
+│ │ ├── config # KafkaConfig, KafkaConsumerConfig
 │ │ ├── controller # TaskController, UserController
+│ │ ├── event # TaskEvent, TaskEventKafkaPublisher, Consumers
 │ │ ├── model # Task, AppUser
-│ │ ├── repository # TaskRepository, UserRepository
-│ │ ├── service # TaskService, AppUserService, OAuth2UserService
+│ │ ├── repository # TaskRepository, AppUserRepository
+│ │ ├── service # TaskService, AppUserService
 │ │ └── security # Security configuration
 │ └── resources
 │ ├── db/migration # Flyway SQL scripts
@@ -103,7 +109,7 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 ## 🚦 Getting Started
 
-### 🐳 Run Docker-Compose (for DB and Keycloak)
+### 🐳 Run Docker-Compose (PostgreSQL, Keycloak, Kafka, kafka-ui)
 
 `docker-compose up -d`
 
@@ -113,23 +119,26 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 ### 🧪 Running Tests
 `./mvnw test`
 
-Tests are located in src/test/, covering services and controllers with MockMvc and JUnit.
+Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services needed.
 
 ### 📑 Swagger Documentation
 `http://localhost:8080/swagger-ui/index.html`
 
+### 📊 Kafka UI
+`http://localhost:8083`
+
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
 ```
-GET /api/tasks — list all tasks
+GET    /api/tasks           — list own tasks (paginated: ?page=0&size=20)
 
-POST /api/tasks — create task
+POST   /api/tasks           — create task (assigned to authenticated user)
 
-GET /api/tasks/{id} — get task by ID
+GET    /api/tasks/{id}      — get own task by ID
 
-PUT /api/tasks/{id} — update task
+PUT    /api/tasks/{id}      — update own task
 
-DELETE /api/tasks/{id} — delete task
+DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task (ROLE_ADMIN)
 ```
 
 ### 👤 User Endpoints
