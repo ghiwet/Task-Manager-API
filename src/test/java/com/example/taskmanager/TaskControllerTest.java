@@ -2,15 +2,17 @@ package com.example.taskmanager;
 
 import com.example.taskmanager.dto.TaskCreateDto;
 import com.example.taskmanager.dto.TaskDto;
-import com.example.taskmanager.model.Task;
 import com.example.taskmanager.repository.TaskRepository;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -24,6 +26,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(TestcontainersConfig.class)
+@EmbeddedKafka(partitions = 1)
+@TestPropertySource(properties = "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class TaskControllerTest {
 
@@ -49,20 +54,31 @@ class TaskControllerTest {
         TaskCreateDto taskCreateDto = new TaskCreateDto("Test Title", "Test Description", true);
 
         mockMvc.perform(post("/api/tasks")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.title").value("Test Title"));
+                .andExpect(jsonPath("$.title").value("Test Title"))
+                .andExpect(jsonPath("$.owner").value("user1"));
     }
 
     @Test
     @Order(2)
     void testGetTask() throws Exception {
-        Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
+        TaskCreateDto createDto = new TaskCreateDto("Fetch Title", "Fetch Description", false);
 
-        MvcResult result = mockMvc.perform(get("/api/tasks/" + task.getId())
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+        MvcResult createResult = mockMvc.perform(post("/api/tasks")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(createDto)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        TaskDto createdTask = jsonMapper.readValue(createResult.getResponse().getContentAsString(), TaskDto.class);
+        id = createdTask.getId();
+
+        MvcResult result = mockMvc.perform(get("/api/tasks/" + id)
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -70,17 +86,17 @@ class TaskControllerTest {
 
         assertNotNull(responseTask.getId());
         assertEquals("Fetch Title", responseTask.getTitle());
-        id = responseTask.getId();
+        assertEquals("user1", responseTask.getOwner());
     }
 
     @Test
     @Order(3)
-    void tesUpdateTask() throws Exception {
+    void testUpdateTask() throws Exception {
         TaskCreateDto taskCreateDto = new TaskCreateDto("Modified Title", "Modified Description", true);
 
         MvcResult result = mockMvc
                 .perform(put("/api/tasks/" + id)
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isOk())
@@ -94,29 +110,78 @@ class TaskControllerTest {
 
     @Test
     @Order(4)
-    void testDeleteTaskForbidden() throws Exception {
-        Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
-
-        mockMvc.perform(delete("/api/tasks/" + task.getId())
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isForbidden());
+    void testGetTaskByDifferentUserReturnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/tasks/" + id)
+                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     @Order(5)
-    void testDeleteTask() throws Exception {
-        Task task = taskRepository.save(new Task(null, 0, "Fetch Title", "Fetch Description", false, null, null));
+    void testUpdateTaskByDifferentUserReturnsNotFound() throws Exception {
+        TaskCreateDto taskCreateDto = new TaskCreateDto("Hacked Title", "Hacked", false);
 
-        mockMvc.perform(delete("/api/tasks/" + task.getId())
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/tasks/" + id)
+                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(taskCreateDto)))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     @Order(6)
+    void testDeleteTaskForbiddenForNonAdmin() throws Exception {
+        mockMvc.perform(delete("/api/tasks/" + id)
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(7)
+    void testDeleteTaskByAdmin() throws Exception {
+        mockMvc.perform(delete("/api/tasks/" + id)
+                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(8)
     void testGetTaskNotFound() throws Exception {
-        mockMvc.perform(get("/api/tasks/" + id + 1)
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+        mockMvc.perform(get("/api/tasks/99999")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Order(9)
+    void testFindTasksPaginated() throws Exception {
+        taskRepository.deleteAll();
+
+        for (int i = 1; i <= 3; i++) {
+            TaskCreateDto dto = new TaskCreateDto("Task " + i, "Desc " + i, false);
+            mockMvc.perform(post("/api/tasks")
+                    .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(jsonMapper.writeValueAsString(dto)));
+        }
+
+        mockMvc.perform(get("/api/tasks")
+                        .param("page", "0")
+                        .param("size", "2")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2));
+    }
+
+    @Test
+    @Order(10)
+    void testFindTasksOnlyReturnsOwnedTasks() throws Exception {
+        mockMvc.perform(get("/api/tasks")
+                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
     }
 }

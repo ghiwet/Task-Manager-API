@@ -28,6 +28,10 @@ public class Task {
     private String description;
 
     private boolean completed;
+
+    @Column(nullable = false)
+    private String owner;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

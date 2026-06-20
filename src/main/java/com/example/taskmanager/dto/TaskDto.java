@@ -14,6 +14,7 @@ public class TaskDto {
     private String description;
 
     private boolean completed;
+    private String owner;
     private String createAt;
     private String updatedAt;
 }

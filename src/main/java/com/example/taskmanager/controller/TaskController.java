@@ -2,16 +2,16 @@ package com.example.taskmanager.controller;
 
 import com.example.taskmanager.dto.TaskCreateDto;
 import com.example.taskmanager.dto.TaskDto;
-import com.example.taskmanager.exception.TaskNotFoundException;
-import com.example.taskmanager.model.Task;
 import com.example.taskmanager.service.TaskService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Objects;
 
 @RestController
 @RequestMapping(path = "/api/tasks")
@@ -24,50 +24,34 @@ public class TaskController {
     }
 
     @PostMapping
-    public ResponseEntity<TaskDto> createTask(@RequestBody @Valid TaskCreateDto taskCreateDto) {
-        Task task = taskService.createTask(taskCreateDto);
-        TaskDto taskDto = taskService.convertEntityToDto(task);
-
+    public ResponseEntity<TaskDto> createTask(@RequestBody @Valid TaskCreateDto taskCreateDto, Authentication authentication) {
+        TaskDto taskDto = taskService.createTask(taskCreateDto, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(taskDto);
     }
 
     @PutMapping(path = "{id}")
-    public ResponseEntity<TaskDto> updateTask(@PathVariable(name = "id")  Long id, @RequestBody TaskCreateDto taskCreateDto) {
-        Task task =  taskService.findTaskById(id);
-        if(Objects.isNull(task)){
-            throw new TaskNotFoundException("Task with ID " + id + " not found");
-        }
-        task = taskService.updateTask(task, taskCreateDto);
-        TaskDto taskDto = taskService.convertEntityToDto(task);
-
-        return ResponseEntity.ok().body(taskDto);
+    public ResponseEntity<TaskDto> updateTask(@PathVariable(name = "id") Long id, @RequestBody TaskCreateDto taskCreateDto, Authentication authentication) {
+        TaskDto taskDto = taskService.updateTask(id, authentication.getName(), taskCreateDto);
+        return ResponseEntity.ok(taskDto);
     }
 
     @GetMapping(path = "{id}")
-    public ResponseEntity<TaskDto>  findTask(@PathVariable(name = "id")  Long id) {
-        Task task =  taskService.findTaskById(id);
-        if(Objects.isNull(task)){
-            throw new TaskNotFoundException("Task with ID " + id + " not found");
-        }
-        TaskDto taskDto = taskService.convertEntityToDto(task);
-
-        return ResponseEntity.ok().body(taskDto);
+    public ResponseEntity<TaskDto> findTask(@PathVariable(name = "id") Long id, Authentication authentication) {
+        TaskDto taskDto = taskService.findTask(id, authentication.getName());
+        return ResponseEntity.ok(taskDto);
     }
 
     @GetMapping
-    public ResponseEntity<List<TaskDto>> findTasks() {
-        List<Task>  tasks = taskService.findTasks();
-        List<TaskDto> taskDtos = taskService.convertEntitiesToDtos(tasks);
-        return ResponseEntity.ok().body(taskDtos);
+    public ResponseEntity<Page<TaskDto>> findTasks(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication) {
+        Page<TaskDto> taskDtos = taskService.findTasks(authentication.getName(), pageable);
+        return ResponseEntity.ok(taskDtos);
     }
 
     @DeleteMapping(path = "{id}")
-    public void deleteTask(@PathVariable(name = "id")  Long id) {
-        Task task =  taskService.findTaskById(id);
-        if(Objects.isNull(task)){
-            throw new TaskNotFoundException("Task with ID " + id + " not found");
-        }
-        taskService.deleteTask(task);
+    public ResponseEntity<Void> deleteTask(@PathVariable(name = "id") Long id) {
+        taskService.deleteTask(id);
+        return ResponseEntity.noContent().build();
     }
-
 }

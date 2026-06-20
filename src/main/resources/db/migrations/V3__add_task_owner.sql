@@ -1,0 +1,3 @@
+ALTER TABLE tasks ADD COLUMN owner VARCHAR(255);
+UPDATE tasks SET owner = 'system' WHERE owner IS NULL;
+ALTER TABLE tasks ALTER COLUMN owner SET NOT NULL;
