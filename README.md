@@ -15,6 +15,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 💀 Dead letter topic (DLT) for failed message handling
 - 🗃️ PostgreSQL database with Flyway migrations
 - 📑 Swagger UI for API exploration
+- 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -30,8 +31,9 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - PostgreSQL
 - Apache Kafka 4.3 (KRaft mode)
 - Swagger (springdoc-openapi)
+- Micrometer + Prometheus + Grafana
 - Testcontainers
-- Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui)
+- Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana)
 
 ---
 
@@ -109,7 +111,7 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 ## 🚦 Getting Started
 
-### 🐳 Run Docker-Compose (PostgreSQL, Keycloak, Kafka, kafka-ui)
+### 🐳 Run Docker-Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana)
 
 `docker-compose up -d`
 
@@ -126,6 +128,12 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 
 ### 📊 Kafka UI
 `http://localhost:8083`
+
+### 📈 Prometheus
+`http://localhost:9090`
+
+### 📉 Grafana
+`http://localhost:3000` (admin/admin) — pre-provisioned dashboard with JVM, HTTP, task operations, Kafka events, and DB pool metrics
 
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
