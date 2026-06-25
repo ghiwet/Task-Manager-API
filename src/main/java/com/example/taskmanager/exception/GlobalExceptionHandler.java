@@ -3,8 +3,13 @@ package com.example.taskmanager.exception;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -25,6 +30,24 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleUserNotFound(AppUserNotFoundException ex) {
         meterRegistry.counter("http.errors.total", "type", "AppUserNotFoundException", "status", "404").increment();
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+        meterRegistry.counter("http.errors.total", "type", "MethodArgumentNotValidException", "status", "400").increment();
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (FieldError error : ex.getBindingResult().getFieldErrors()) {
+            fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage());
+        }
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        problem.setProperty("errors", fieldErrors);
+        return problem;
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ProblemDetail handleIllegalState(IllegalStateException ex) {
+        meterRegistry.counter("http.errors.total", "type", "IllegalStateException", "status", "409").increment();
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

@@ -1,8 +1,10 @@
 package com.example.taskmanager.controller;
 
+import com.example.taskmanager.dto.UserRegistrationDto;
 import com.example.taskmanager.exception.AppUserNotFoundException;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.service.AppUserService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,7 +41,10 @@ public class UserController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AppUser> registerUser(@RequestBody AppUser newUser) {
+    public ResponseEntity<AppUser> registerUser(@RequestBody @Valid UserRegistrationDto registration) {
+        AppUser newUser = new AppUser();
+        newUser.setUsername(registration.getUsername());
+        newUser.setPassword(registration.getPassword());
         AppUser created = userService.registerNewUser(newUser);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

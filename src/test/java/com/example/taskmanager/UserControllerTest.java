@@ -59,7 +59,7 @@ public class UserControllerTest {
     void testCreateUser() throws Exception {
         Map<String, Object> user = Map.of(
                 "username", "user1",
-                "password", "pass1"
+                "password", "Pass1!word"
         );
 
         MvcResult result = mockMvc.perform(post("/api/users/register")
@@ -77,7 +77,7 @@ public class UserControllerTest {
 
         Map<String, Object> user2 = Map.of(
                 "username", "user2",
-                "password", "pass2"
+                "password", "Pass2!word"
         );
 
         mockMvc.perform(post("/api/users/register")
@@ -98,7 +98,7 @@ public class UserControllerTest {
         AppUser userResponse = jsonMapper.readValue(result.getResponse().getContentAsString(), AppUser.class);
 
         assertEquals("user1", userResponse.getUsername());
-        assertTrue(passwordEncoder.matches("pass1", userResponse.getPassword()));
+        assertTrue(passwordEncoder.matches("Pass1!word", userResponse.getPassword()));
     }
 
     @Test
@@ -163,5 +163,35 @@ public class UserControllerTest {
                         .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(8)
+    void testRegisterWithWeakPasswordReturnsBadRequest() throws Exception {
+        Map<String, Object> user = Map.of(
+                "username", "weakuser",
+                "password", "password"
+        );
+
+        mockMvc.perform(post("/api/users/register")
+                        .with(jwt().jwt(j -> j.subject("weakuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(user)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(9)
+    void testRegisterWithShortUsernameReturnsBadRequest() throws Exception {
+        Map<String, Object> user = Map.of(
+                "username", "ab",
+                "password", "Pass1!word"
+        );
+
+        mockMvc.perform(post("/api/users/register")
+                        .with(jwt().jwt(j -> j.subject("ab")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(user)))
+                .andExpect(status().isBadRequest());
     }
 }
