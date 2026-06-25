@@ -38,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-        "spring.kafka.listener.auto-startup=true"
+        "spring.kafka.listener.auto-startup=true",
+        "rate-limit.enabled=false"
 })
 @DirtiesContext
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
