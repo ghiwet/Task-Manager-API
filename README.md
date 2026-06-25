@@ -16,6 +16,8 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🗃️ PostgreSQL database with Flyway migrations
 - 📑 Swagger UI for API exploration
 - 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
+- 🚦 Rate limiting — per-user / per-IP token buckets (Bucket4j) with `429` + `Retry-After`
+- 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -32,6 +34,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - Apache Kafka 4.3 (KRaft mode)
 - Swagger (springdoc-openapi)
 - Micrometer + Prometheus + Grafana
+- Bucket4j (rate limiting)
 - Testcontainers
 - Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana)
 
@@ -42,13 +45,13 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 src
 ├── main
 │ ├── java/com/example/taskmanager
-│ │ ├── config # KafkaConfig, KafkaConsumerConfig
+│ │ ├── config # KafkaConfig, KafkaConsumerConfig, RateLimitProperties
 │ │ ├── controller # TaskController, UserController
 │ │ ├── event # TaskEvent, TaskEventKafkaPublisher, Consumers
 │ │ ├── model # Task, AppUser
 │ │ ├── repository # TaskRepository, AppUserRepository
 │ │ ├── service # TaskService, AppUserService
-│ │ └── security # Security configuration
+│ │ └── security # WebSecurityConfig, RateLimitFilter
 │ └── resources
 │ ├── db/migration # Flyway SQL scripts
 │ ├── application.properties
@@ -135,6 +138,47 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 ### 📉 Grafana
 `http://localhost:3000` (admin/admin) — pre-provisioned dashboard with JVM, HTTP, task operations, Kafka events, and DB pool metrics
 
+## 🛡️ Security Hardening
+
+### 🚦 Rate Limiting
+
+Requests are throttled with [Bucket4j](https://bucket4j.com/) token buckets via a `RateLimitFilter` placed
+just after JWT authentication in the security chain. Authenticated requests are keyed per JWT subject; anonymous
+requests fall back to the client IP (`X-Forwarded-For` aware). Each response carries an `X-Rate-Limit-Remaining`
+header; exceeded limits return `429 Too Many Requests` with a `Retry-After` header and an RFC 9457 `ProblemDetail`
+body, and increment the `rate_limit_exceeded_total` Prometheus counter.
+
+Limits are configurable in `application.properties`:
+
+```properties
+rate-limit.enabled=true
+rate-limit.public-requests-per-minute=20          # keyed by IP
+rate-limit.authenticated-requests-per-minute=60   # keyed by JWT subject
+rate-limit.registration-requests-per-minute=5     # stricter, for /api/users/register
+rate-limit.bucket-cleanup-interval-minutes=10
+```
+
+### 🔒 Security Headers
+
+Every response sets defensive HTTP headers via the Spring Security `headers()` DSL:
+
+- `Strict-Transport-Security` (1 year, includeSubDomains, preload) — emitted over HTTPS
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Content-Security-Policy: default-src 'self'; ...`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+
+### ✅ Input Validation
+
+Registration binds a dedicated `UserRegistrationDto` (not the raw entity), preventing mass-assignment of `id`,
+`version`, or `roles`. Constraints are enforced with Jakarta Bean Validation:
+
+- **username** — 3–50 chars, letters/digits/`. _ -` only
+- **password** — 8–128 chars, requiring upper- and lower-case letters, a digit, and a special character
+
+Validation failures return `400 Bad Request` with a per-field `errors` map; duplicate usernames return `409 Conflict`.
+
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
 ```
@@ -151,7 +195,7 @@ DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task (ROLE_AD
 
 ### 👤 User Endpoints
 ```
-POST /api/users/register — register user
+POST /api/users/register — register user (validated username + password)
 
 GET /api/users/me — current user info (secured)
 ```
