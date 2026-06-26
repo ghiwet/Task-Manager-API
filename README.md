@@ -9,7 +9,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - ✅ CRUD operations for tasks and users
 - 🔐 OAuth2 authentication (Google, GitHub, Keycloak) + JWT resource server
 - 👤 Task ownership — users only see and modify their own tasks
-- 🗑️ Two-tier delete — users delete own tasks, admins delete any task
+- 🗑️ Two-tier delete — users delete own tasks, admins delete any task within their tenant
 - 📄 Paginated task listing with sorting
 - 📨 Kafka event-driven notifications (CREATED, UPDATED, COMPLETED, DELETED)
 - 💀 Dead letter topic (DLT) for failed message handling
@@ -18,6 +18,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
 - 🚦 Rate limiting — per-user / per-IP token buckets (Bucket4j) with `429` + `Retry-After`
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
+- 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -48,10 +49,11 @@ src
 │ │ ├── config # KafkaConfig, KafkaConsumerConfig, RateLimitProperties
 │ │ ├── controller # TaskController, UserController
 │ │ ├── event # TaskEvent, TaskEventKafkaPublisher, Consumers
-│ │ ├── model # Task, AppUser
+│ │ ├── model # Task, AppUser (both tenant-scoped via tenant_id)
 │ │ ├── repository # TaskRepository, AppUserRepository
 │ │ ├── service # TaskService, AppUserService
-│ │ └── security # WebSecurityConfig, RateLimitFilter
+│ │ ├── security # WebSecurityConfig, RateLimitFilter
+│ │ └── tenant # TenantContext, TenantFilter, Hibernate multi-tenancy config
 │ └── resources
 │ ├── db/migration # Flyway SQL scripts
 │ ├── application.properties
@@ -179,6 +181,41 @@ Registration binds a dedicated `UserRegistrationDto` (not the raw entity), preve
 
 Validation failures return `400 Bad Request` with a per-field `errors` map; duplicate usernames return `409 Conflict`.
 
+## 🏢 Multi-Tenancy (Row-Level Security)
+
+Tasks and users are scoped to a tenant via a `tenant_id` column, and isolation is enforced by **PostgreSQL
+row-level security** — at the database layer, not just in application code. Even a query that forgets its
+`WHERE` clause (or a future bug) physically cannot return another tenant's rows.
+
+**How a request's tenant reaches the database:**
+
+```
+JWT  tenant_id claim
+  → TenantFilter            (reads the claim, binds it to a request-scoped TenantContext)
+  → CurrentTenantResolver   (Hibernate asks "which tenant?" per unit of work)
+  → TenantConnectionProvider(runs set_config('app.current_tenant', …) on the pooled connection,
+                             and resets it on release so nothing leaks across requests)
+  → RLS policy              (USING / WITH CHECK: tenant_id = current_setting('app.current_tenant'))
+```
+
+The tenant comes from a custom `tenant_id` claim, added in Keycloak via a user attribute and a protocol
+mapper (see `keycloak/realm-export.json`). `current_setting('app.current_tenant', true)` returns `NULL`
+when unset, so a missing tenant context matches **no rows** (default deny) rather than erroring.
+
+**Two database roles** make this airtight (RLS does not apply to a table's owner or a superuser):
+
+| Role | Used by | Privilege | RLS |
+|------|---------|-----------|-----|
+| `app_rls` | the application at runtime | non-owner, DML only | **enforced** |
+| `taskuser` | Flyway migrations | owner / superuser | bypassed (so migrations run) |
+
+The app connects as the least-privilege `app_rls` role (`spring.datasource.*`), while Flyway connects as the
+privileged owner (`spring.flyway.user`). The `app_rls` role, its grants, and the policies are created in the
+`V5__enable_rls.sql` migration.
+
+`TenantIsolationTest` connects the app as `app_rls` and proves isolation holds — including cases where the
+same owner exists in two tenants, so only RLS (not the owner filter) can block cross-tenant access.
+
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
 ```
@@ -190,7 +227,7 @@ GET    /api/tasks/{id}      — get own task by ID
 
 PUT    /api/tasks/{id}      — update own task
 
-DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task (ROLE_ADMIN)
+DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task in the tenant (ROLE_ADMIN)
 ```
 
 ### 👤 User Endpoints
