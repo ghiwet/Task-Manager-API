@@ -4,6 +4,7 @@ import com.example.taskmanager.enumration.Role;
 import com.example.taskmanager.exception.AppUserNotFoundException;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.repository.AppUserRepository;
+import com.example.taskmanager.tenant.TenantContext;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -53,6 +54,7 @@ public class AppUserService implements UserDetailsService {
         }
 
         newUser.setPassword(passwordEncoder.encode(newUser.getPassword()));
+        newUser.setTenantId(TenantContext.getTenantId());
 
         // Optionally assign default roles if none provided
         if (newUser.getRoles() == null || newUser.getRoles().isEmpty()) {

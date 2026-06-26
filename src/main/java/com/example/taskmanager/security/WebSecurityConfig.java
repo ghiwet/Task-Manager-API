@@ -1,5 +1,6 @@
 package com.example.taskmanager.security;
 
+import com.example.taskmanager.tenant.TenantFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -26,9 +27,11 @@ import java.util.stream.Collectors;
 public class WebSecurityConfig {
 
     private final RateLimitFilter rateLimitFilter;
+    private final TenantFilter tenantFilter;
 
-    public WebSecurityConfig(RateLimitFilter rateLimitFilter) {
+    public WebSecurityConfig(RateLimitFilter rateLimitFilter, TenantFilter tenantFilter) {
         this.rateLimitFilter = rateLimitFilter;
+        this.tenantFilter = tenantFilter;
     }
 
     @Bean
@@ -49,6 +52,7 @@ public class WebSecurityConfig {
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                         .permissionsPolicyHeader(permissions -> permissions
                                 .policy("camera=(), microphone=(), geolocation=()")))
+                .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()

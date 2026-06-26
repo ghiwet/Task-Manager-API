@@ -32,6 +32,9 @@ public class Task {
     @Column(nullable = false)
     private String owner;
 
+    @Column(name = "tenant_id", nullable = false, updatable = false)
+    private String tenantId;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

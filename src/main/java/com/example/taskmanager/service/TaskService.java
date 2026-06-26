@@ -7,6 +7,7 @@ import com.example.taskmanager.event.TaskEventType;
 import com.example.taskmanager.exception.TaskNotFoundException;
 import com.example.taskmanager.model.Task;
 import com.example.taskmanager.repository.TaskRepository;
+import com.example.taskmanager.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,6 +37,7 @@ public class TaskService {
             task.setDescription(taskCreateDto.getDescription());
             task.setCompleted(taskCreateDto.isCompleted());
             task.setOwner(owner);
+            task.setTenantId(TenantContext.getTenantId());
             Task savedTask = taskRepository.save(task);
             meterRegistry.counter("task.operations.total", "type", TaskEventType.CREATED.name()).increment();
             publishEvent(savedTask, TaskEventType.CREATED);

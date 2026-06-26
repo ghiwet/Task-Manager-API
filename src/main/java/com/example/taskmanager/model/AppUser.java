@@ -26,6 +26,9 @@ public class AppUser {
 
     private String password;
 
+    @Column(name = "tenant_id", nullable = false, updatable = false)
+    private String tenantId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @Enumerated(EnumType.STRING)
     private Set<Role> roles;

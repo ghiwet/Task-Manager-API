@@ -3,6 +3,7 @@ package com.example.taskmanager;
 import com.example.taskmanager.enumration.Role;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.repository.AppUserRepository;
+import com.example.taskmanager.tenant.TenantContext;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -26,6 +27,7 @@ public class TaskmanagerApplication {
 				user.setUsername("user");
 				user.setPassword(encoder.encode("password"));
 				user.setRoles(Set.of(Role.ROLE_USER));
+				user.setTenantId(TenantContext.getTenantId());
 				repository.save(user);
 			}
 
@@ -34,6 +36,7 @@ public class TaskmanagerApplication {
 				admin.setUsername("admin");
 				admin.setPassword(encoder.encode("adminpass"));
 				admin.setRoles(Set.of(Role.ROLE_USER, Role.ROLE_ADMIN));
+				admin.setTenantId(TenantContext.getTenantId());
 				repository.save(admin);
 			}
 		};
