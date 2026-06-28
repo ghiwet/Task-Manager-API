@@ -1,0 +1,27 @@
+# Single-binary Tempo for local dev: receive OTLP spans, store them on local disk.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:        # OTLP/HTTP on :4318
+          endpoint: "0.0.0.0:4318"   # bind all interfaces so the host-published port works
+        grpc:        # OTLP/gRPC on :4317
+          endpoint: "0.0.0.0:4317"
+
+ingester:
+  max_block_duration: 5m   # flush quickly so traces appear in search promptly
+
+compactor:
+  compaction:
+    block_retention: 1h    # dev only — keep traces briefly
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks

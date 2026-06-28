@@ -16,6 +16,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🗃️ PostgreSQL database with Flyway migrations
 - 📑 Swagger UI for API exploration
 - 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
+- 🔭 Distributed tracing — OpenTelemetry spans (HTTP, JDBC, Kafka) exported to Tempo, one trace per request across services
 - 🚦 Rate limiting — per-user / per-IP token buckets (Bucket4j) with `429` + `Retry-After`
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
@@ -35,9 +36,10 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - Apache Kafka 4.3 (KRaft mode)
 - Swagger (springdoc-openapi)
 - Micrometer + Prometheus + Grafana
+- OpenTelemetry (Micrometer Tracing) + Grafana Tempo (distributed tracing)
 - Bucket4j (rate limiting)
 - Testcontainers
-- Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana)
+- Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana, Tempo)
 
 ---
 
@@ -116,7 +118,7 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 ## 🚦 Getting Started
 
-### 🐳 Run Docker-Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana)
+### 🐳 Run Docker-Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana, Tempo)
 
 `docker-compose up -d`
 
@@ -138,7 +140,14 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 `http://localhost:9090`
 
 ### 📉 Grafana
-`http://localhost:3000` (admin/admin) — pre-provisioned dashboard with JVM, HTTP, task operations, Kafka events, and DB pool metrics
+`http://localhost:3000` (admin/admin) — pre-provisioned dashboard with JVM, HTTP, task operations, Kafka events, and DB pool metrics. Traces are in **Explore → Tempo**.
+
+### 🔭 Tempo (traces)
+`http://localhost:3200` (queried through Grafana; spans are sent here via OTLP on `:4318`)
+
+> Upgrading an existing stack? The Grafana datasources are provisioned with fixed UIDs. If you ran an
+> earlier version, recreate the Grafana volume once (`docker compose down -v`, or remove the
+> `grafana_data` volume) so the new UIDs provision cleanly.
 
 ## 🛡️ Security Hardening
 
@@ -215,6 +224,42 @@ privileged owner (`spring.flyway.user`). The `app_rls` role, its grants, and the
 
 `TenantIsolationTest` connects the app as `app_rls` and proves isolation holds — including cases where the
 same owner exists in two tenants, so only RLS (not the owner filter) can block cross-tenant access.
+
+## 🔭 Distributed Tracing
+
+Requests are traced with the **Micrometer Observation API** bridged to **OpenTelemetry**, exporting spans
+over **OTLP/HTTP** to **Grafana Tempo**. A single request becomes one trace that follows the work across
+every layer — and across the Kafka boundary:
+
+```
+HTTP POST /api/tasks  (server span)
+  ├── Spring Security  (filter chain, authn, authz)
+  ├── JDBC             (connection, query, generated-keys)
+  ├── task-events send     (Kafka producer span)
+  └── task-events process  (Kafka consumer span — same trace via propagated context)
+```
+
+- **HTTP, RestClient, JDBC** spans are auto-instrumented; JDBC query spans come from
+  [`datasource-micrometer`](https://github.com/jdbc-observations/datasource-micrometer).
+- **Kafka propagation** is enabled by observation on the producer template and listener container
+  (`spring.kafka.template.observation-enabled` / `spring.kafka.listener.observation-enabled`), so the
+  consumer span joins the producer's trace via W3C `traceparent` headers.
+- **Log correlation** — every log line includes `traceId`/`spanId`, and Grafana's Tempo datasource links
+  spans back to Prometheus metrics for the same service.
+
+Configurable in `application.properties`:
+
+```properties
+spring.application.name=task-manager-api
+management.tracing.sampling.probability=1.0                                  # sample all in dev
+management.opentelemetry.tracing.export.otlp.endpoint=http://localhost:4318/v1/traces
+```
+
+**View traces:** Grafana → Explore → **Tempo** datasource → search (e.g. `{ name = "http post /api/tasks" }`).
+Metrics stay on the Prometheus pipeline; only traces go to Tempo.
+
+> Note: tracing is wired via `spring-boot-starter-opentelemetry`. The starter also brings an OTLP metrics
+> registry, so metrics are kept on the Prometheus pipeline with `management.otlp.metrics.export.enabled=false`.
 
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints

@@ -4,5 +4,24 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+    uid: prometheus
     isDefault: true
     editable: false
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    editable: false
+    jsonData:
+      # Jump from a span to the Prometheus metrics for that service.
+      tracesToMetrics:
+        datasourceUid: prometheus
+        # Map the span's service.name onto the Prometheus `application` label.
+        tags:
+          - key: service.name
+            value: application
+        queries:
+          - name: Request rate
+            query: 'sum(rate(http_server_requests_seconds_count{$$__tags}[5m]))'

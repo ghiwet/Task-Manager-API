@@ -50,6 +50,18 @@
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>
 		</dependency>
+		<!-- Distributed tracing via OpenTelemetry/OTLP. The starter also brings an OTLP metrics
+		     registry; metrics are kept on Prometheus (disabled in application.properties). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-opentelemetry</artifactId>
+		</dependency>
+		<!-- JDBC query spans (not auto-traced by Spring Boot); built for Spring Boot 4.x -->
+		<dependency>
+			<groupId>net.ttddyy.observation</groupId>
+			<artifactId>datasource-micrometer-spring-boot</artifactId>
+			<version>2.2.1</version>
+		</dependency>
 <!--		<dependency>-->
 <!--			<groupId>com.h2database</groupId>-->
 <!--			<artifactId>h2</artifactId>-->
