@@ -45,11 +45,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
         "rate-limit.enabled=false"
 })
-class TenantIsolationTest {
+class TenantIsolationTest extends AbstractIntegrationTest {
 
     // Singleton container started manually (the testcontainers junit-jupiter extension is not a
     // dependency); reused for the JVM and reaped by Ryuk on shutdown.
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(TestcontainersConfig.POSTGRES_IMAGE);
 
     static {
         postgres.start();

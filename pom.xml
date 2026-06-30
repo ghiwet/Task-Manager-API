@@ -28,7 +28,21 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<spring-ai.version>2.0.0</spring-ai.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -61,6 +75,20 @@
 			<groupId>net.ttddyy.observation</groupId>
 			<artifactId>datasource-micrometer-spring-boot</artifactId>
 			<version>2.2.1</version>
+		</dependency>
+		<!-- AI assistant (RAG): OpenAI for chat, local ONNX model for embeddings, pgvector store.
+		     Embeddings are routed to the transformers model via spring.ai.model.embedding. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-openai</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-transformers</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
 		</dependency>
 <!--		<dependency>-->
 <!--			<groupId>com.h2database</groupId>-->

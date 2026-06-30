@@ -1,5 +1,6 @@
 package com.example.taskmanager.security;
 
+import com.example.taskmanager.AbstractIntegrationTest;
 import com.example.taskmanager.TestcontainersConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.authenticated-requests-per-minute=3"
 })
 @DirtiesContext
-class RateLimitFilterTest {
+class RateLimitFilterTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

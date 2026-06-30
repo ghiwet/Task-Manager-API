@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     container_name: taskmanager_postgres
     restart: always
     environment:

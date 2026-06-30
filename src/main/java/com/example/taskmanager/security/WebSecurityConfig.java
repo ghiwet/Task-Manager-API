@@ -58,6 +58,7 @@ public class WebSecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").hasAuthority("ROLE_USER")
                         .requestMatchers(HttpMethod.DELETE, "/api/tasks/**").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/api/assistant/**").hasAuthority("ROLE_USER")
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth

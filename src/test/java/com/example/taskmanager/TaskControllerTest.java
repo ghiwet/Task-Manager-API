@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.enabled=false"
 })
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class TaskControllerTest {
+class TaskControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

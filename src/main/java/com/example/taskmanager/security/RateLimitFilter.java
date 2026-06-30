@@ -50,7 +50,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String keyType;
         int limit;
 
-        if (authenticated) {
+        if (authenticated && isAssistantEndpoint(request)) {
+            // Separate, stricter bucket for the costly AI endpoint (own key so it doesn't share
+            // the general per-user allowance).
+            key = "assistant:" + auth.getName();
+            keyType = "assistant";
+            limit = properties.getAssistantRequestsPerMinute();
+        } else if (authenticated) {
             key = "user:" + auth.getName();
             keyType = "user";
             limit = isRegistrationEndpoint(request)
@@ -87,6 +93,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private boolean isRegistrationEndpoint(HttpServletRequest request) {
         return "POST".equalsIgnoreCase(request.getMethod())
                 && "/api/users/register".equals(request.getRequestURI());
+    }
+
+    private boolean isAssistantEndpoint(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/api/assistant/");
     }
 
     private String resolveClientIp(HttpServletRequest request) {

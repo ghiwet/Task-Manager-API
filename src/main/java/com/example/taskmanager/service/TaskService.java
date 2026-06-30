@@ -116,6 +116,8 @@ public class TaskService {
                 .title(task.getTitle())
                 .description(task.getDescription())
                 .completed(task.isCompleted())
+                .owner(task.getOwner())
+                .tenantId(task.getTenantId())
                 .eventType(eventType)
                 .timestamp(DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()))
                 .build();

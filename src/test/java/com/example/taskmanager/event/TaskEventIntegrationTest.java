@@ -1,5 +1,6 @@
 package com.example.taskmanager.event;
 
+import com.example.taskmanager.AbstractIntegrationTest;
 import com.example.taskmanager.TestcontainersConfig;
 import com.example.taskmanager.config.KafkaConfig;
 import com.example.taskmanager.dto.TaskCreateDto;
@@ -44,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class TaskEventIntegrationTest {
+class TaskEventIntegrationTest extends AbstractIntegrationTest {
 
     private static final String TEST_OWNER = "test-user";
 

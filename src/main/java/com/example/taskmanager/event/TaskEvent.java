@@ -14,6 +14,8 @@ public class TaskEvent {
     private String title;
     private String description;
     private boolean completed;
+    private String owner;
+    private String tenantId;
     private TaskEventType eventType;
     private String timestamp;
 }
