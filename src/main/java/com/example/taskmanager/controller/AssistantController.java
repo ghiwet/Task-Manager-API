@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/assistant")
+@RequestMapping("/api/v1/assistant")
 public class AssistantController {
 
     private final AssistantService assistantService;

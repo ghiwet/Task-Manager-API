@@ -173,7 +173,7 @@ Limits are configurable in `application.properties`:
 rate-limit.enabled=true
 rate-limit.public-requests-per-minute=20          # keyed by IP
 rate-limit.authenticated-requests-per-minute=60   # keyed by JWT subject
-rate-limit.registration-requests-per-minute=5     # stricter, for /api/users/register
+rate-limit.registration-requests-per-minute=5     # stricter, for /api/v1/users/register
 rate-limit.bucket-cleanup-interval-minutes=10
 ```
 
@@ -240,7 +240,7 @@ over **OTLP/HTTP** to **Grafana Tempo**. A single request becomes one trace that
 every layer — and across the Kafka boundary:
 
 ```
-HTTP POST /api/tasks  (server span)
+HTTP POST /api/v1/tasks  (server span)
   ├── Spring Security  (filter chain, authn, authz)
   ├── JDBC             (connection, query, generated-keys)
   ├── task-events send     (Kafka producer span)
@@ -263,7 +263,7 @@ management.tracing.sampling.probability=1.0                                  # s
 management.opentelemetry.tracing.export.otlp.endpoint=http://localhost:4318/v1/traces
 ```
 
-**View traces:** Grafana → Explore → **Tempo** datasource → search (e.g. `{ name = "http post /api/tasks" }`).
+**View traces:** Grafana → Explore → **Tempo** datasource → search (e.g. `{ name = "http post /api/v1/tasks" }`).
 Metrics stay on the Prometheus pipeline; only traces go to Tempo.
 
 > Note: tracing is wired via `spring-boot-starter-opentelemetry`. The starter also brings an OTLP metrics
@@ -271,7 +271,7 @@ Metrics stay on the Prometheus pipeline; only traces go to Tempo.
 
 ## 🤖 AI Task Assistant (RAG)
 
-Ask natural-language questions about your tasks. `POST /api/assistant/query` runs a retrieval-augmented
+Ask natural-language questions about your tasks. `POST /api/v1/assistant/query` runs a retrieval-augmented
 generation flow that reuses the rest of the stack:
 
 ```
@@ -310,26 +310,26 @@ spring.ai.vectorstore.pgvector.initialize-schema=false   # the table + RLS come 
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
 ```
-GET    /api/tasks           — list own tasks (paginated: ?page=0&size=20)
+GET    /api/v1/tasks           — list own tasks (paginated: ?page=0&size=20)
 
-POST   /api/tasks           — create task (assigned to authenticated user)
+POST   /api/v1/tasks           — create task (assigned to authenticated user)
 
-GET    /api/tasks/{id}      — get own task by ID
+GET    /api/v1/tasks/{id}      — get own task by ID
 
-PUT    /api/tasks/{id}      — update own task
+PUT    /api/v1/tasks/{id}      — update own task
 
-DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task in the tenant (ROLE_ADMIN)
+DELETE /api/v1/tasks/{id}      — delete own task (ROLE_USER) or any task in the tenant (ROLE_ADMIN)
 ```
 
 ### 👤 User Endpoints
 ```
-POST /api/users/register — register user (validated username + password)
+POST /api/v1/users/register — register user (validated username + password)
 
-GET /api/users/me — current user info (secured)
+GET /api/v1/users/me — current user info (secured)
 ```
 
 ### 🤖 Assistant Endpoint
 ```
-POST /api/assistant/query — ask about your tasks (ROLE_USER); body {"question": "..."}
+POST /api/v1/assistant/query — ask about your tasks (ROLE_USER); body {"question": "..."}
                             returns {"answer": "...", "retrievedTaskIds": [..]}
 ```

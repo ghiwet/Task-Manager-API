@@ -92,11 +92,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private boolean isRegistrationEndpoint(HttpServletRequest request) {
         return "POST".equalsIgnoreCase(request.getMethod())
-                && "/api/users/register".equals(request.getRequestURI());
+                && "/api/v1/users/register".equals(request.getRequestURI());
     }
 
     private boolean isAssistantEndpoint(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/api/assistant/");
+        return request.getRequestURI().startsWith("/api/v1/assistant/");
     }
 
     private String resolveClientIp(HttpServletRequest request) {

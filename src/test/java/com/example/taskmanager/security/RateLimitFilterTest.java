@@ -34,12 +34,12 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
     @Test
     void whenRateLimitExceeded_thenReturns429WithRetryAfter() throws Exception {
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/api/tasks")
+            mockMvc.perform(get("/api/v1/tasks")
                             .with(jwt().jwt(j -> j.subject("rate-test-user")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                     .andExpect(status().isOk());
         }
 
-        mockMvc.perform(get("/api/tasks")
+        mockMvc.perform(get("/api/v1/tasks")
                         .with(jwt().jwt(j -> j.subject("rate-test-user")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"))
@@ -50,7 +50,7 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
 
     @Test
     void whenWithinRateLimit_thenReturnsRemainingHeader() throws Exception {
-        mockMvc.perform(get("/api/tasks")
+        mockMvc.perform(get("/api/v1/tasks")
                         .with(jwt().jwt(j -> j.subject("header-test-user")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-Rate-Limit-Remaining"));

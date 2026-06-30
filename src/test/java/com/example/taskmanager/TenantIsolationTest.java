@@ -101,7 +101,7 @@ class TenantIsolationTest extends AbstractIntegrationTest {
 
     private Long createTask(String subject, String tenantId, String title) throws Exception {
         TaskCreateDto dto = new TaskCreateDto(title, "desc", false);
-        MvcResult result = mockMvc.perform(post("/api/tasks")
+        MvcResult result = mockMvc.perform(post("/api/v1/tasks")
                         .with(user(subject, tenantId))
                         .contentType("application/json")
                         .content(jsonMapper.writeValueAsString(dto)))
@@ -114,11 +114,11 @@ class TenantIsolationTest extends AbstractIntegrationTest {
     void tenantOnlySeesItsOwnTasks() throws Exception {
         createTask("alice", TENANT_A, "tenant-a task");
 
-        mockMvc.perform(get("/api/tasks").with(user("bob", TENANT_B)))
+        mockMvc.perform(get("/api/v1/tasks").with(user("bob", TENANT_B)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(0));
 
-        mockMvc.perform(get("/api/tasks").with(user("alice", TENANT_A)))
+        mockMvc.perform(get("/api/v1/tasks").with(user("alice", TENANT_A)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
@@ -128,10 +128,10 @@ class TenantIsolationTest extends AbstractIntegrationTest {
         // Same subject "alice" in both tenants: the app's owner filter would match, only RLS blocks.
         Long id = createTask("alice", TENANT_A, "secret");
 
-        mockMvc.perform(get("/api/tasks/" + id).with(user("alice", TENANT_B)))
+        mockMvc.perform(get("/api/v1/tasks/" + id).with(user("alice", TENANT_B)))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/api/tasks").with(user("alice", TENANT_B)))
+        mockMvc.perform(get("/api/v1/tasks").with(user("alice", TENANT_B)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
@@ -141,17 +141,17 @@ class TenantIsolationTest extends AbstractIntegrationTest {
         Long id = createTask("alice", TENANT_A, "secret");
 
         TaskCreateDto update = new TaskCreateDto("hacked", "x", true);
-        mockMvc.perform(put("/api/tasks/" + id)
+        mockMvc.perform(put("/api/v1/tasks/" + id)
                         .with(user("alice", TENANT_B))
                         .contentType("application/json")
                         .content(jsonMapper.writeValueAsString(update)))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(delete("/api/tasks/" + id).with(user("alice", TENANT_B)))
+        mockMvc.perform(delete("/api/v1/tasks/" + id).with(user("alice", TENANT_B)))
                 .andExpect(status().isNotFound());
 
         // Owner in the correct tenant can still delete it.
-        mockMvc.perform(delete("/api/tasks/" + id).with(user("alice", TENANT_A)))
+        mockMvc.perform(delete("/api/v1/tasks/" + id).with(user("alice", TENANT_A)))
                 .andExpect(status().isNoContent());
     }
 

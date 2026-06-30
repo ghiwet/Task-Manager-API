@@ -62,7 +62,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "Pass1!word"
         );
 
-        MvcResult result = mockMvc.perform(post("/api/users/register")
+        MvcResult result = mockMvc.perform(post("/api/v1/users/register")
                         .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
@@ -80,7 +80,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "Pass2!word"
         );
 
-        mockMvc.perform(post("/api/users/register")
+        mockMvc.perform(post("/api/v1/users/register")
                         .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user2)))
@@ -90,7 +90,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Test
     @Order(2)
     void testGetUser() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/users/me")
+        MvcResult result = mockMvc.perform(get("/api/v1/users/me")
                         .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -104,7 +104,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Test
     @Order(3)
     void testGetUserNotFound() throws Exception {
-        mockMvc.perform(get("/api/users/me")
+        mockMvc.perform(get("/api/v1/users/me")
                         .with(jwt().jwt(j -> j.subject("user3")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
@@ -116,7 +116,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "newPass"
         );
         MvcResult result = mockMvc
-                .perform(put("/api/users/" + username)
+                .perform(put("/api/v1/users/" + username)
                         .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
@@ -134,7 +134,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "anotherPass"
         );
         mockMvc
-                .perform(put("/api/users/" + username)
+                .perform(put("/api/v1/users/" + username)
                         .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
@@ -148,7 +148,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "anotherPass"
         );
         mockMvc
-                .perform(put("/api/users/" + username)
+                .perform(put("/api/v1/users/" + username)
                         .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
@@ -159,7 +159,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Order(7)
     void testDeleteUserByAdmin() throws Exception {
         mockMvc
-                .perform(delete("/api/users/" + username)
+                .perform(delete("/api/v1/users/" + username)
                         .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNoContent());
@@ -173,7 +173,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "password"
         );
 
-        mockMvc.perform(post("/api/users/register")
+        mockMvc.perform(post("/api/v1/users/register")
                         .with(jwt().jwt(j -> j.subject("weakuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
@@ -188,7 +188,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "Pass1!word"
         );
 
-        mockMvc.perform(post("/api/users/register")
+        mockMvc.perform(post("/api/v1/users/register")
                         .with(jwt().jwt(j -> j.subject("ab")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))

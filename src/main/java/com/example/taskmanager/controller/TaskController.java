@@ -14,7 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping(path = "/api/tasks")
+@RequestMapping(path = "/api/v1/tasks")
 public class TaskController {
 
     private final TaskService taskService;
