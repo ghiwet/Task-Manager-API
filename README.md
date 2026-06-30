@@ -20,6 +20,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🚦 Rate limiting — per-user / per-IP token buckets (Bucket4j) with `429` + `Retry-After`
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
+- 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -37,6 +38,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - Swagger (springdoc-openapi)
 - Micrometer + Prometheus + Grafana
 - OpenTelemetry (Micrometer Tracing) + Grafana Tempo (distributed tracing)
+- Spring AI 2.0 (OpenAI chat, local ONNX embeddings, pgvector vector store)
 - Bucket4j (rate limiting)
 - Testcontainers
 - Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana, Tempo)
@@ -55,7 +57,8 @@ src
 │ │ ├── repository # TaskRepository, AppUserRepository
 │ │ ├── service # TaskService, AppUserService
 │ │ ├── security # WebSecurityConfig, RateLimitFilter
-│ │ └── tenant # TenantContext, TenantFilter, Hibernate multi-tenancy config
+│ │ ├── tenant # TenantContext, TenantFilter, Hibernate multi-tenancy config
+│ │ └── ai # AssistantController/Service/Retriever, task embedding consumer
 │ └── resources
 │ ├── db/migration # Flyway SQL scripts
 │ ├── application.properties
@@ -124,6 +127,11 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 ###  ▶️ Run Application
 `./mvnw spring-boot:run`
+
+For the AI assistant's generation step, set an OpenAI key first (everything else runs without it):
+```bash
+export OPENAI_API_KEY=sk-...
+```
 
 ### 🧪 Running Tests
 `./mvnw test`
@@ -261,6 +269,44 @@ Metrics stay on the Prometheus pipeline; only traces go to Tempo.
 > Note: tracing is wired via `spring-boot-starter-opentelemetry`. The starter also brings an OTLP metrics
 > registry, so metrics are kept on the Prometheus pipeline with `management.otlp.metrics.export.enabled=false`.
 
+## 🤖 AI Task Assistant (RAG)
+
+Ask natural-language questions about your tasks. `POST /api/assistant/query` runs a retrieval-augmented
+generation flow that reuses the rest of the stack:
+
+```
+question
+  → embed (local ONNX model, all-MiniLM)
+  → similarity search in pgvector, scoped to your tenant (RLS) AND your tasks (owner filter)
+  → OpenAI answers using only the retrieved tasks as context
+  → { answer, retrievedTaskIds }
+```
+
+- **Personal scoping** — retrieval is bounded by **tenant** (RLS, the same `SET LOCAL app.current_tenant`
+  boundary as the rest of the app) *and* **owner** (a metadata filter), so the assistant only ever sees
+  what you can see through the task API. A colleague's tasks in the same tenant are never retrieved.
+- **Event-driven indexing** — task embeddings are kept in sync off the Kafka task event stream (a
+  dedicated consumer group upserts on create/update, removes on delete); no embedding API is used.
+- **Cost controls** — the endpoint has its own stricter rate-limit bucket (`assistant-requests-per-minute`),
+  separate from the general per-user limit.
+- **Observability** — the whole flow is one trace (HTTP → `embedding` → `pg_vector query` → `chat`), and
+  Spring AI exports Prometheus metrics: `gen_ai_client_operation_seconds` (chat/embedding latency, tagged by
+  model/system) and `gen_ai_client_token_usage_total` (token cost, tagged `gen_ai_token_type=input|output|total`).
+  Example token-cost query: `sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_total{gen_ai_system="openai"}[5m]))`.
+
+Configure in `application.properties` (chat via OpenAI, embeddings local, store managed by Flyway `V6`):
+
+```properties
+spring.ai.model.chat=openai
+spring.ai.model.embedding=transformers       # local ONNX; no embedding API
+spring.ai.openai.api-key=${OPENAI_API_KEY:}
+spring.ai.openai.chat.options.model=gpt-4o-mini
+spring.ai.vectorstore.pgvector.initialize-schema=false   # the table + RLS come from Flyway
+```
+
+> Requires `OPENAI_API_KEY` for the generation step. Embeddings, retrieval, and tenant/owner scoping work
+> without it; only the final answer needs the key.
+
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
 ```
@@ -280,4 +326,10 @@ DELETE /api/tasks/{id}      — delete own task (ROLE_USER) or any task in the t
 POST /api/users/register — register user (validated username + password)
 
 GET /api/users/me — current user info (secured)
+```
+
+### 🤖 Assistant Endpoint
+```
+POST /api/assistant/query — ask about your tasks (ROLE_USER); body {"question": "..."}
+                            returns {"answer": "...", "retrievedTaskIds": [..]}
 ```
