@@ -21,6 +21,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
 - 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
+- 🧯 Resilience — circuit breaker, retry, timeout, and graceful fallback (Resilience4j) around the LLM call
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -39,6 +40,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - Micrometer + Prometheus + Grafana
 - OpenTelemetry (Micrometer Tracing) + Grafana Tempo (distributed tracing)
 - Spring AI 2.0 (OpenAI chat, local ONNX embeddings, pgvector vector store)
+- Resilience4j (circuit breaker, retry, timeout)
 - Bucket4j (rate limiting)
 - Testcontainers
 - Docker and Docker Compose (PostgreSQL, Keycloak, Kafka, kafka-ui, Prometheus, Grafana, Tempo)
@@ -289,6 +291,11 @@ question
   dedicated consumer group upserts on create/update, removes on delete); no embedding API is used.
 - **Cost controls** — the endpoint has its own stricter rate-limit bucket (`assistant-requests-per-minute`),
   separate from the general per-user limit.
+- **Resilience** — the OpenAI call is wrapped with Resilience4j: **retry** on transient errors (rate limit,
+  5xx, IO — never on 4xx), a **circuit breaker** that opens on sustained failures (auth/4xx don't trip it),
+  a read **timeout**, and a **fallback** that returns a degraded message with the retrieved task ids. A
+  failing or slow model degrades gracefully to a `200` instead of a `500`. Circuit-breaker/retry state is on
+  Prometheus (`resilience4j_circuitbreaker_state`, `resilience4j_retry_calls_total`).
 - **Observability** — the whole flow is one trace (HTTP → `embedding` → `pg_vector query` → `chat`), and
   Spring AI exports Prometheus metrics: `gen_ai_client_operation_seconds` (chat/embedding latency, tagged by
   model/system) and `gen_ai_client_token_usage_total` (token cost, tagged `gen_ai_token_type=input|output|total`).
