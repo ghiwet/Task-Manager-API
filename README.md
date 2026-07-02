@@ -1,5 +1,7 @@
 # 📋 Task Manager API
 
+[![CI](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml/badge.svg)](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml)
+
 A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentication (Google, GitHub, Keycloak), Kafka event-driven notifications, task ownership, pagination, and Testcontainers-based testing. Flyway is used for database versioning, and Swagger provides interactive API documentation.
 
 ---
@@ -134,6 +136,13 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 For the AI assistant's generation step, set an OpenAI key first (everything else runs without it):
 ```bash
 export OPENAI_API_KEY=sk-...
+```
+
+### 🔄 CI/CD
+GitHub Actions runs the build + full test suite on every push and PR (`ci.yml`). Pushing a version tag
+publishes a container image to GitHub Container Registry (`release.yml`):
+```bash
+git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api:1.0.0 (+ :latest)
 ```
 
 ### 🧪 Running Tests
