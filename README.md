@@ -12,6 +12,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🗑️ Two-tier delete — users delete own tasks, admins delete any task within their tenant
 - 📄 Paginated task listing with sorting
 - 📨 Kafka event-driven notifications (CREATED, UPDATED, COMPLETED, DELETED)
+- 📤 Transactional outbox — events are staged in the task's DB transaction and relayed to Kafka, so none are lost
 - 💀 Dead letter topic (DLT) for failed message handling
 - 🗃️ PostgreSQL database with Flyway migrations
 - 📑 Swagger UI for API exploration
@@ -313,6 +314,27 @@ spring.ai.vectorstore.pgvector.initialize-schema=false   # the table + RLS come 
 
 > Requires `OPENAI_API_KEY` for the generation step. Embeddings, retrieval, and tenant/owner scoping work
 > without it; only the final answer needs the key.
+
+## 📤 Transactional Outbox
+
+Task events aren't sent to Kafka directly (a best-effort send can be lost if the broker is momentarily
+down — and here that would mean a task never gets embedded). Instead they use the **outbox pattern**:
+
+```
+TaskService.<create|update|delete>  (@Transactional)
+  ├── task change      ┐ one atomic DB transaction — both commit, or neither
+  └── outbox row       ┘
+OutboxRelay  (@Scheduled)  claim unpublished rows (FOR UPDATE SKIP LOCKED) → send to Kafka → mark published
+```
+
+- **No lost events** — the event is durably staged with the task change; if Kafka is down the row stays
+  unpublished and the relay retries on the next poll (verified by stopping Kafka, creating a task, and
+  watching it publish on recovery).
+- **Safe concurrent relaying** — `FOR UPDATE SKIP LOCKED` lets multiple instances relay without double-publishing.
+- **At-least-once** — a crash between send and mark-published may redeliver; consumers are idempotent
+  (embedding upsert/delete by deterministic id), so that's safe.
+- Published rows are pruned by a scheduled cleanup; `outbox_published_total` / `outbox_publish_failed_total`
+  are exposed to Prometheus.
 
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints

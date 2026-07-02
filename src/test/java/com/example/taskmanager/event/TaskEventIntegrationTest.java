@@ -40,7 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
         "spring.kafka.listener.auto-startup=true",
-        "rate-limit.enabled=false"
+        "rate-limit.enabled=false",
+        // Fast outbox relay so staged events publish promptly in this test.
+        "outbox.relay.poll-interval-ms=200"
 })
 @DirtiesContext
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)

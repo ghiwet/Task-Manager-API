@@ -6,14 +6,18 @@ import com.example.taskmanager.event.TaskEvent;
 import com.example.taskmanager.event.TaskEventType;
 import com.example.taskmanager.exception.TaskNotFoundException;
 import com.example.taskmanager.model.Task;
+import com.example.taskmanager.config.KafkaConfig;
+import com.example.taskmanager.outbox.OutboxEvent;
+import com.example.taskmanager.outbox.OutboxRepository;
 import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -21,15 +25,19 @@ import java.time.format.DateTimeFormatter;
 @Service
 public class TaskService {
     private final TaskRepository taskRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxRepository outboxRepository;
+    private final JsonMapper jsonMapper;
     private final MeterRegistry meterRegistry;
 
-    public TaskService(TaskRepository taskRepository, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
+    public TaskService(TaskRepository taskRepository, OutboxRepository outboxRepository,
+                       JsonMapper jsonMapper, MeterRegistry meterRegistry) {
         this.taskRepository = taskRepository;
-        this.eventPublisher = eventPublisher;
+        this.outboxRepository = outboxRepository;
+        this.jsonMapper = jsonMapper;
         this.meterRegistry = meterRegistry;
     }
 
+    @Transactional
     public TaskDto createTask(TaskCreateDto taskCreateDto, String owner) {
         return Timer.builder("task.operation.duration").tag("operation", "create").register(meterRegistry).record(() -> {
             Task task = new Task();
@@ -45,6 +53,7 @@ public class TaskService {
         });
     }
 
+    @Transactional
     public TaskDto updateTask(Long id, String owner, TaskCreateDto taskDto) {
         return Timer.builder("task.operation.duration").tag("operation", "update").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -84,6 +93,7 @@ public class TaskService {
         });
     }
 
+    @Transactional
     public void deleteTask(Long id, String owner, boolean isAdmin) {
         Timer.builder("task.operation.duration").tag("operation", "delete").register(meterRegistry).record(() -> {
             Task task = isAdmin
@@ -110,6 +120,8 @@ public class TaskService {
         return dto;
     }
 
+    // Stage the event in the outbox within the same transaction as the task change, so the two
+    // commit atomically; the OutboxRelay publishes it to Kafka afterwards (no dual-write loss).
     private void publishEvent(Task task, TaskEventType eventType) {
         TaskEvent event = TaskEvent.builder()
                 .taskId(task.getId())
@@ -121,6 +133,13 @@ public class TaskService {
                 .eventType(eventType)
                 .timestamp(DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()))
                 .build();
-        eventPublisher.publishEvent(event);
+        OutboxEvent outboxEvent = OutboxEvent.builder()
+                .aggregateType("task")
+                .aggregateId(String.valueOf(task.getId()))
+                .eventType(eventType.name())
+                .topic(KafkaConfig.TASK_EVENTS_TOPIC)
+                .payload(jsonMapper.writeValueAsString(event))
+                .build();
+        outboxRepository.save(outboxEvent);
     }
 }

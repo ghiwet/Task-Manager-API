@@ -235,7 +235,7 @@
       "id": 11,
       "targets": [
         {
-          "expr": "rate(kafka_events_published_total{application=\"task-manager-api\"}[5m])",
+          "expr": "rate(outbox_published_total{application=\"task-manager-api\"}[5m])",
           "legendFormat": "{{type}}"
         }
       ],
@@ -269,7 +269,7 @@
       "id": 13,
       "targets": [
         {
-          "expr": "rate(kafka_events_failed_total{application=\"task-manager-api\"}[5m])",
+          "expr": "rate(outbox_publish_failed_total{application=\"task-manager-api\"}[5m])",
           "legendFormat": "{{type}}"
         }
       ],
