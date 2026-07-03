@@ -20,6 +20,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: java
+          build-mode: manual   # we build with Maven below; CodeQL traces it
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -36,33 +37,22 @@ jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
+    # Semgrep scans source, so no Java build is needed; run in the maintained image.
+    container:
+      image: semgrep/semgrep
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '25'
-
-      - name: Build with Maven
-        run: ./mvnw clean install -DskipTests
-
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/ci
-          generateSarif: false
-          runOptions: >-
-            --output semgrep-report.html
-            --output-format html
+        run: semgrep scan --config=p/ci --sarif --output=semgrep.sarif
+        continue-on-error: true
 
-      - name: Upload HTML report
+      - name: Upload Semgrep report
         uses: actions/upload-artifact@v4
         with:
-          name: semgrep-html-report
-          path: semgrep-report.html
+          name: semgrep-sarif
+          path: semgrep.sarif
 
   dependency-check:
     name: OWASP Dependency-Check
@@ -70,12 +60,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # TODO: pin @main to a released tag once verified. The NVD API rate-limits without a
+      # key, so add an NVD_API_KEY repo secret (https://nvd.nist.gov/developers/request-an-api-key)
+      # or the DB download will be very slow / time out.
       - name: Run OWASP Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
           project: 'java-app'
           path: './'
           format: 'HTML'
+          args: ${{ secrets.NVD_API_KEY && format('--nvdApiKey {0}', secrets.NVD_API_KEY) || '' }}
 
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
@@ -89,11 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Scan with TruffleHog
-        uses: trufflesecurity/trufflehog@main
-        continue-on-error: true
-
-      - name: Run TruffleHog with JSON output
+      - name: Run TruffleHog (filesystem scan, JSON report)
         run: |
          docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:latest \
          filesystem /repo --json > trufflehog-report.json
