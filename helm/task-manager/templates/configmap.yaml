@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "task-manager.fullname" . }}-config
+  labels:
+    {{- include "task-manager.labels" . | nindent 4 }}
+data:
+  SPRING_DATASOURCE_URL: {{ .Values.config.datasourceUrl | quote }}
+  SPRING_DATASOURCE_USERNAME: {{ .Values.config.datasourceUsername | quote }}
+  SPRING_FLYWAY_USER: {{ .Values.config.flywayUser | quote }}
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: {{ .Values.config.kafkaBootstrapServers | quote }}
+  KEYCLOAK_BASE_URL: {{ .Values.config.keycloakBaseUrl | quote }}
+  KEYCLOAK_CLIENT_ID: {{ .Values.config.keycloakClientId | quote }}
+  BASE_URL: {{ .Values.config.baseUrl | quote }}
+  MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: {{ .Values.config.otlpTracingEndpoint | quote }}
+  SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL: {{ .Values.config.openaiChatModel | quote }}
+  # Expose the readiness/liveness health groups used by the probes.
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"

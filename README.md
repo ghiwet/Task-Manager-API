@@ -145,6 +145,38 @@ publishes a container image to GitHub Container Registry (`release.yml`):
 git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api:1.0.0 (+ :latest)
 ```
 
+### ☸️ Kubernetes (Helm)
+A Helm chart lives in `helm/task-manager` — it deploys the app (pulling the GHCR image) and expects
+Postgres (with the `vector` extension), Kafka, and Keycloak to be reachable; set their addresses in
+`values.yaml` under `config.*`.
+```bash
+helm install tm helm/task-manager \
+  --set image.tag=0.1.1 \
+  --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
+```
+The Deployment has actuator startup/readiness/liveness probes and resource limits. Optional extras:
+`--set autoscaling.enabled=true` (CPU-based HPA) and `--set ingress.enabled=true --set ingress.host=...`.
+Validate without a cluster: `helm lint helm/task-manager` and `helm template tm helm/task-manager`.
+
+**Try it locally with [kind](https://kind.sigs.k8s.io/):** build the image, load it into the cluster,
+and point the chart at the backing services from `docker compose up -d` (reachable at your host IP).
+```bash
+kind create cluster --name tm
+./mvnw package -DskipTests && docker build -t task-manager:local .
+kind load docker-image task-manager:local --name tm
+
+HOST_IP=$(ipconfig getifaddr en0)   # macOS; use `hostname -I` on Linux
+helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082
+
+kubectl get pods -w                                  # wait for 1/1 Ready
+kubectl port-forward svc/tm-task-manager 8080:8080
+curl http://localhost:8080/actuator/health           # {"status":"UP"}
+
+helm uninstall tm && kind delete cluster --name tm   # cleanup
+```
+> Kafka is degraded in this setup (the compose broker advertises `localhost`, unreachable across the
+> kind/compose network boundary) — harmless here; run Kafka in-cluster for full connectivity.
+
 ### 🧪 Running Tests
 `./mvnw test`
 

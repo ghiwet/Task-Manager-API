@@ -1,0 +1,14 @@
+{{ include "task-manager.fullname" . }} is deployed.
+
+The chart deploys the app only — make sure Postgres (with the vector extension), Kafka,
+and Keycloak are reachable at the addresses in values (config.*).
+
+Check status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Port-forward and hit the API / health:
+  kubectl port-forward svc/{{ include "task-manager.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/actuator/health
+
+Swagger UI:
+  http://localhost:8080/swagger-ui/index.html

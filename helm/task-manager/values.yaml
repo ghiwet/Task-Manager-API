@@ -1,0 +1,66 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/ghiwet/task-manager-api
+  # Defaults to the chart appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# For a private GHCR package, reference a pull secret here, e.g. [{ name: ghcr-creds }].
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi   # the in-process ONNX embedding model needs headroom
+  limits:
+    cpu: "1"
+    memory: 1536Mi
+
+# Non-secret config, injected as Spring env (relaxed binding). Point these at your
+# in-cluster or external services.
+config:
+  datasourceUrl: jdbc:postgresql://postgres:5432/taskdb
+  datasourceUsername: app_rls
+  flywayUser: taskuser
+  kafkaBootstrapServers: kafka:9092
+  keycloakBaseUrl: http://keycloak:8080
+  keycloakClientId: springboot-app
+  baseUrl: http://localhost:8080
+  otlpTracingEndpoint: http://tempo:4318/v1/traces
+  openaiChatModel: gpt-4o-mini
+
+# Secrets. Override via --set or a private values file; never commit real secrets.
+secrets:
+  datasourcePassword: app_rls_pass
+  flywayPassword: taskpass
+  keycloakClientSecret: secret123
+  openaiApiKey: ""
+
+# Probes hit Spring Boot's actuator health groups.
+probes:
+  startup:
+    failureThreshold: 30   # ~5 min for Postgres/Kafka/Keycloak to become reachable
+    periodSeconds: 10
+  readiness:
+    periodSeconds: 10
+  liveness:
+    periodSeconds: 20
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: false
+  className: ""
+  host: task-manager.local
+  path: /
+  pathType: Prefix
+  annotations: {}
