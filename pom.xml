@@ -171,6 +171,23 @@
 			<artifactId>bucket4j_jdk17-core</artifactId>
 			<version>8.19.0</version>
 		</dependency>
+		<!-- Distributed rate limiting: bucket state lives in Redis so the limit is shared across
+		     replicas (Lettuce is the Redis client, also used by spring-boot-starter-data-redis). -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j_jdk17-lettuce</artifactId>
+			<version>8.19.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<!-- Cache abstraction auto-configuration (Boot 4 keeps this out of the data-redis starter);
+		     with Redis present it wires a RedisCacheManager for the cache-aside on task reads. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.kafka</groupId>
 			<artifactId>spring-kafka-test</artifactId>

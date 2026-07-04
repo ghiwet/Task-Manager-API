@@ -28,6 +28,8 @@ config:
   datasourceUsername: app_rls
   flywayUser: taskuser
   kafkaBootstrapServers: kafka:9092
+  redisHost: redis
+  redisPort: 6379
   keycloakBaseUrl: http://keycloak:8080
   keycloakClientId: springboot-app
   baseUrl: http://localhost:8080

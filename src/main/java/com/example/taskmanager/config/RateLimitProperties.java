@@ -13,5 +13,4 @@ public class RateLimitProperties {
     private int authenticatedRequestsPerMinute = 60;
     private int registrationRequestsPerMinute = 5;
     private int assistantRequestsPerMinute = 10;
-    private int bucketCleanupIntervalMinutes = 10;
 }

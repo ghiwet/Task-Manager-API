@@ -1,36 +1,35 @@
 package com.example.taskmanager.security;
 
 import com.example.taskmanager.config.RateLimitProperties;
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private final RateLimitProperties properties;
-    private final MeterRegistry meterRegistry;
-    private final ConcurrentHashMap<String, BucketEntry> buckets = new ConcurrentHashMap<>();
+    private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    public RateLimitFilter(RateLimitProperties properties, MeterRegistry meterRegistry) {
+    private final RateLimitProperties properties;
+    private final RateLimiterBackend backend;
+    private final MeterRegistry meterRegistry;
+
+    public RateLimitFilter(RateLimitProperties properties, RateLimiterBackend backend, MeterRegistry meterRegistry) {
         this.properties = properties;
+        this.backend = backend;
         this.meterRegistry = meterRegistry;
     }
 
@@ -68,10 +67,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
             limit = properties.getPublicRequestsPerMinute();
         }
 
-        BucketEntry entry = buckets.computeIfAbsent(key, k -> new BucketEntry(createBucket(limit)));
-        entry.lastAccessedAt.set(System.currentTimeMillis());
+        ConsumptionProbe probe;
+        try {
+            probe = backend.tryConsume(key, limit);
+        } catch (Exception ex) {
+            // Fail open: don't block traffic if the rate-limit backend (Redis) is unavailable.
+            log.warn("Rate limit backend unavailable ({}); allowing request", ex.getMessage());
+            meterRegistry.counter("rate.limit.backend.error.total").increment();
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-        ConsumptionProbe probe = entry.bucket.tryConsumeAndReturnRemaining(1);
         if (probe.isConsumed()) {
             response.setHeader("X-Rate-Limit-Remaining", String.valueOf(probe.getRemainingTokens()));
             filterChain.doFilter(request, response);
@@ -107,26 +113,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return request.getRemoteAddr();
     }
 
-    private Bucket createBucket(int tokensPerMinute) {
-        return Bucket.builder()
-                .addLimit(Bandwidth.simple(tokensPerMinute, Duration.ofMinutes(1)))
-                .build();
-    }
-
-    // Production would use bucket4j-redis for distributed rate limiting across multiple instances
-    @Scheduled(fixedRateString = "${rate-limit.bucket-cleanup-interval-minutes:10}000")
-    public void cleanupStaleBuckets() {
-        long threshold = System.currentTimeMillis() - Duration.ofMinutes(properties.getBucketCleanupIntervalMinutes() * 2L).toMillis();
-        buckets.entrySet().removeIf(entry -> entry.getValue().lastAccessedAt.get() < threshold);
-    }
-
-    private static class BucketEntry {
-        final Bucket bucket;
-        final AtomicLong lastAccessedAt;
-
-        BucketEntry(Bucket bucket) {
-            this.bucket = bucket;
-            this.lastAccessedAt = new AtomicLong(System.currentTimeMillis());
-        }
-    }
 }

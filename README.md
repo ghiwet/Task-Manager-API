@@ -20,7 +20,8 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 📑 Swagger UI for API exploration
 - 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
 - 🔭 Distributed tracing — OpenTelemetry spans (HTTP, JDBC, Kafka) exported to Tempo, one trace per request across services
-- 🚦 Rate limiting — per-user / per-IP token buckets (Bucket4j) with `429` + `Retry-After`
+- 🚦 Rate limiting — Redis-backed token buckets (Bucket4j), shared across replicas, with `429` + `Retry-After`
+- ⚡ Redis cache-aside for task reads (evict-on-write, fail-open)
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
 - 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
@@ -147,7 +148,7 @@ git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api
 
 ### ☸️ Kubernetes (Helm)
 A Helm chart lives in `helm/task-manager` — it deploys the app (pulling the GHCR image) and expects
-Postgres (with the `vector` extension), Kafka, and Keycloak to be reachable; set their addresses in
+Postgres (with the `vector` extension), Kafka, Redis, and Keycloak to be reachable; set their addresses in
 `values.yaml` under `config.*`.
 ```bash
 helm install tm helm/task-manager \
@@ -211,6 +212,10 @@ requests fall back to the client IP (`X-Forwarded-For` aware). Each response car
 header; exceeded limits return `429 Too Many Requests` with a `Retry-After` header and an RFC 9457 `ProblemDetail`
 body, and increment the `rate_limit_exceeded_total` Prometheus counter.
 
+Buckets live in **Redis** (Bucket4j's Lettuce proxy manager), so the limit is **shared across replicas** —
+an in-memory map would let N pods each grant the full limit. If Redis is unavailable the filter **fails open**
+(logs and allows the request) rather than blocking traffic, and bucket TTLs replace any cleanup job.
+
 Limits are configurable in `application.properties`:
 
 ```properties
@@ -218,8 +223,14 @@ rate-limit.enabled=true
 rate-limit.public-requests-per-minute=20          # keyed by IP
 rate-limit.authenticated-requests-per-minute=60   # keyed by JWT subject
 rate-limit.registration-requests-per-minute=5     # stricter, for /api/v1/users/register
-rate-limit.bucket-cleanup-interval-minutes=10
 ```
+
+### ⚡ Caching
+
+Task lookups use **cache-aside** with Spring Cache over Redis: `findTask` is `@Cacheable` (keyed by
+`owner:id`), and updates/deletes `@CacheEvict` the entry so reads never go stale. TTL is configurable
+(`cache.tasks.ttl-minutes`), and the cache **fails open** — a Redis outage falls through to the database
+instead of erroring.
 
 ### 🔒 Security Headers
 

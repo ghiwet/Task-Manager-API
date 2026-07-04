@@ -1,9 +1,11 @@
 package com.example.taskmanager;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistrar;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -26,6 +28,20 @@ public class TestcontainersConfig {
         return registry -> {
             registry.add("spring.flyway.user", postgres::getUsername);
             registry.add("spring.flyway.password", postgres::getPassword);
+        };
+    }
+
+    // Redis for distributed rate limiting (and caching).
+    @Bean
+    GenericContainer<?> redis() {
+        return new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
+    }
+
+    @Bean
+    DynamicPropertyRegistrar redisProperties(@Qualifier("redis") GenericContainer<?> redis) {
+        return registry -> {
+            registry.add("spring.data.redis.host", redis::getHost);
+            registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         };
     }
 }

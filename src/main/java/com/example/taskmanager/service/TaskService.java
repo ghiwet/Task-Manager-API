@@ -6,6 +6,7 @@ import com.example.taskmanager.event.TaskEvent;
 import com.example.taskmanager.event.TaskEventType;
 import com.example.taskmanager.exception.TaskNotFoundException;
 import com.example.taskmanager.model.Task;
+import com.example.taskmanager.config.CacheConfig;
 import com.example.taskmanager.config.KafkaConfig;
 import com.example.taskmanager.outbox.OutboxEvent;
 import com.example.taskmanager.outbox.OutboxRepository;
@@ -13,6 +14,8 @@ import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -54,6 +57,7 @@ public class TaskService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
     public TaskDto updateTask(Long id, String owner, TaskCreateDto taskDto) {
         return Timer.builder("task.operation.duration").tag("operation", "update").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -85,6 +89,7 @@ public class TaskService {
         );
     }
 
+    @Cacheable(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
     public TaskDto findTask(Long id, String owner) {
         return Timer.builder("task.operation.duration").tag("operation", "findOne").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -94,6 +99,7 @@ public class TaskService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
     public void deleteTask(Long id, String owner, boolean isAdmin) {
         Timer.builder("task.operation.duration").tag("operation", "delete").register(meterRegistry).record(() -> {
             Task task = isAdmin
