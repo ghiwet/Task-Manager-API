@@ -26,6 +26,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
 - 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
 - 🧯 Resilience — circuit breaker, retry, timeout, and graceful fallback (Resilience4j) around the LLM call
+- 🚀 Deployable — Docker image (GHCR via CI), Helm chart, and Terraform that provisions the whole stack on kind
 - 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
 
 ---
@@ -177,6 +178,39 @@ helm uninstall tm && kind delete cluster --name tm   # cleanup
 ```
 > Kafka is degraded in this setup (the compose broker advertises `localhost`, unreachable across the
 > kind/compose network boundary) — harmless here; run Kafka in-cluster for full connectivity.
+
+### 🏗️ Provision with Terraform
+`terraform/` provisions the **whole stack** as code — a kind cluster, the backing services
+(Postgres/Redis/Kafka/Keycloak) **in-cluster**, and the app (via the Helm chart) — organized as
+reusable modules (`cluster`, `backing-services`, `app`) composed by a root config. Here Kafka is
+advertised as its in-cluster service, so it connects fully (unlike the compose+kind setup above).
+Run it in three steps — the local image must be loaded **after** the cluster exists but **before** the
+app is deployed:
+```bash
+cd terraform
+terraform init
+
+# 1. create just the cluster
+terraform apply -auto-approve -target=module.cluster
+
+# 2. build the image and load it into the now-existing cluster
+(cd .. && ./mvnw package -DskipTests && docker build -t task-manager:local .)
+kind load docker-image task-manager:local --name task-manager
+
+# 3. deploy the backing services + the app
+terraform apply -auto-approve \
+  -var image_repository=task-manager -var image_tag=local -var image_pull_policy=Never
+
+# reach it (the command is also printed as the `app_port_forward` output)
+kubectl -n task-manager port-forward svc/task-manager-task-manager 8080:8080
+curl http://localhost:8080/actuator/health          # {"status":"UP"}
+
+# tear it all down (cluster included)
+terraform destroy -auto-approve \
+  -var image_repository=task-manager -var image_tag=local -var image_pull_policy=Never
+```
+Without the `image_*` overrides and the load step, it pulls `ghcr.io/ghiwet/task-manager-api` from GHCR
+(the package must be public, or supply an image pull secret) — then a single `terraform apply` suffices.
 
 ### 🧪 Running Tests
 `./mvnw test`

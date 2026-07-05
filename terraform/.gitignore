@@ -1,0 +1,11 @@
+# Terraform state, provider plugins, and local overrides
+# (.terraform.lock.hcl is committed for reproducible provider versions)
+.terraform/
+*.tfstate
+# kind-generated kubeconfig (contains cluster certs)
+*-config
+*.tfstate.*
+*.tfvars
+crash.log
+override.tf
+override.tf.json
