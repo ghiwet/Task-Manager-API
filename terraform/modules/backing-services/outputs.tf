@@ -14,3 +14,7 @@ output "kafka_bootstrap" {
 output "keycloak_base_url" {
   value = "http://${kubernetes_service.keycloak.metadata[0].name}:8080"
 }
+
+output "elasticsearch_uris" {
+  value = "http://${kubernetes_service.elasticsearch.metadata[0].name}:9200"
+}

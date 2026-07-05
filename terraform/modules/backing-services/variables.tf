@@ -38,6 +38,11 @@ variable "keycloak_image" {
   default = "quay.io/keycloak/keycloak:24.0.3"
 }
 
+variable "elasticsearch_image" {
+  type    = string
+  default = "docker.elastic.co/elasticsearch/elasticsearch:9.4.2"
+}
+
 variable "realm_export_path" {
   description = "Path to the Keycloak realm export imported on startup."
   type        = string

@@ -30,6 +30,7 @@ config:
   kafkaBootstrapServers: kafka:9092
   redisHost: redis
   redisPort: 6379
+  elasticsearchUris: http://elasticsearch:9200
   keycloakBaseUrl: http://keycloak:8080
   keycloakClientId: springboot-app
   baseUrl: http://localhost:8080

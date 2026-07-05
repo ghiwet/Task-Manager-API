@@ -1,7 +1,7 @@
 {{ include "task-manager.fullname" . }} is deployed.
 
 The chart deploys the app only — make sure Postgres (with the vector extension), Kafka,
-Redis, and Keycloak are reachable at the addresses in values (config.*).
+Redis, Elasticsearch, and Keycloak are reachable at the addresses in values (config.*).
 
 Check status:
   kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}

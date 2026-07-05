@@ -39,6 +39,10 @@ variable "keycloak_base_url" {
   type = string
 }
 
+variable "elasticsearch_uris" {
+  type = string
+}
+
 variable "openai_api_key" {
   type      = string
   default   = ""

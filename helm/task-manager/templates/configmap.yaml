@@ -11,6 +11,7 @@ data:
   SPRING_KAFKA_BOOTSTRAP_SERVERS: {{ .Values.config.kafkaBootstrapServers | quote }}
   REDIS_HOST: {{ .Values.config.redisHost | quote }}
   REDIS_PORT: {{ .Values.config.redisPort | quote }}
+  ELASTICSEARCH_URIS: {{ .Values.config.elasticsearchUris | quote }}
   KEYCLOAK_BASE_URL: {{ .Values.config.keycloakBaseUrl | quote }}
   KEYCLOAK_CLIENT_ID: {{ .Values.config.keycloakClientId | quote }}
   BASE_URL: {{ .Values.config.baseUrl | quote }}

@@ -22,6 +22,7 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 - 🔭 Distributed tracing — OpenTelemetry spans (HTTP, JDBC, Kafka) exported to Tempo, one trace per request across services
 - 🚦 Rate limiting — Redis-backed token buckets (Bucket4j), shared across replicas, with `429` + `Retry-After`
 - ⚡ Redis cache-aside for task reads (evict-on-write, fail-open)
+- 🔍 Full-text task search (Elasticsearch) — keyword search over your tasks, highlighted and owner/tenant-scoped
 - 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
 - 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
 - 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
@@ -149,7 +150,7 @@ git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api
 
 ### ☸️ Kubernetes (Helm)
 A Helm chart lives in `helm/task-manager` — it deploys the app (pulling the GHCR image) and expects
-Postgres (with the `vector` extension), Kafka, Redis, and Keycloak to be reachable; set their addresses in
+Postgres (with the `vector` extension), Kafka, Redis, Elasticsearch, and Keycloak to be reachable; set their addresses in
 `values.yaml` under `config.*`.
 ```bash
 helm install tm helm/task-manager \
@@ -181,7 +182,7 @@ helm uninstall tm && kind delete cluster --name tm   # cleanup
 
 ### 🏗️ Provision with Terraform
 `terraform/` provisions the **whole stack** as code — a kind cluster, the backing services
-(Postgres/Redis/Kafka/Keycloak) **in-cluster**, and the app (via the Helm chart) — organized as
+(Postgres/Redis/Kafka/Elasticsearch/Keycloak) **in-cluster**, and the app (via the Helm chart) — organized as
 reusable modules (`cluster`, `backing-services`, `app`) composed by a root config. Here Kafka is
 advertised as its in-cluster service, so it connects fully (unlike the compose+kind setup above).
 Run it in three steps — the local image must be loaded **after** the cluster exists but **before** the
@@ -265,6 +266,17 @@ Task lookups use **cache-aside** with Spring Cache over Redis: `findTask` is `@C
 `owner:id`), and updates/deletes `@CacheEvict` the entry so reads never go stale. TTL is configurable
 (`cache.tasks.ttl-minutes`), and the cache **fails open** — a Redis outage falls through to the database
 instead of erroring.
+
+### 🔍 Full-text Search
+
+`GET /api/v1/tasks/search?q=…&completed=…` runs a keyword search over task title/description in
+**Elasticsearch**, with match **highlighting** and pagination. Results are always **scoped to the
+caller's owner and tenant** (Elasticsearch has no row-level security, so isolation is enforced in the
+query, mirroring the AI retriever). The index is kept in sync **event-driven** off the Kafka task
+stream — `TaskSearchIndexConsumer` upserts/deletes by id (no dual-write, like the embedding consumer)
+— so search is a rebuildable derived view. Indexing and querying are **best-effort**: if Elasticsearch
+is unavailable the app still runs and search returns empty rather than erroring. This is distinct from
+the AI assistant's **semantic** search (pgvector) — keyword/faceted vs. meaning-based.
 
 ### 🔒 Security Headers
 

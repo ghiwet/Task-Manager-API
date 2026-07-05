@@ -44,6 +44,10 @@ resource "helm_release" "app" {
     name  = "config.keycloakBaseUrl"
     value = var.keycloak_base_url
   }
+  set {
+    name  = "config.elasticsearchUris"
+    value = var.elasticsearch_uris
+  }
   set_sensitive {
     name  = "secrets.openaiApiKey"
     value = var.openai_api_key

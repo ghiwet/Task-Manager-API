@@ -8,10 +8,11 @@ terraform {
 }
 
 locals {
-  postgres = { app = "postgres" }
-  redis    = { app = "redis" }
-  kafka    = { app = "kafka" }
-  keycloak = { app = "keycloak" }
+  postgres      = { app = "postgres" }
+  redis         = { app = "redis" }
+  kafka         = { app = "kafka" }
+  keycloak      = { app = "keycloak" }
+  elasticsearch = { app = "elasticsearch" }
 }
 
 # ---------------- Postgres (pgvector: the vector extension the V6 migration needs) ----------------
@@ -106,6 +107,64 @@ resource "kubernetes_service" "redis" {
     port {
       port        = 6379
       target_port = 6379
+    }
+  }
+}
+
+# ---------------- Elasticsearch (single-node, security off for the demo) ----------------
+resource "kubernetes_deployment" "elasticsearch" {
+  metadata {
+    name      = "elasticsearch"
+    namespace = var.namespace
+    labels    = local.elasticsearch
+  }
+  spec {
+    replicas = 1
+    selector { match_labels = local.elasticsearch }
+    template {
+      metadata { labels = local.elasticsearch }
+      spec {
+        container {
+          name  = "elasticsearch"
+          image = var.elasticsearch_image
+          env {
+            name  = "discovery.type"
+            value = "single-node"
+          }
+          env {
+            name  = "xpack.security.enabled"
+            value = "false"
+          }
+          env {
+            name  = "ES_JAVA_OPTS"
+            value = "-Xms512m -Xmx512m"
+          }
+          port { container_port = 9200 }
+          readiness_probe {
+            http_get {
+              path = "/_cluster/health"
+              port = 9200
+            }
+            initial_delay_seconds = 20
+            period_seconds        = 10
+            failure_threshold     = 30
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "elasticsearch" {
+  metadata {
+    name      = "elasticsearch"
+    namespace = var.namespace
+  }
+  spec {
+    selector = local.elasticsearch
+    port {
+      port        = 9200
+      target_port = 9200
     }
   }
 }
