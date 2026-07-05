@@ -18,7 +18,7 @@ variable "image_repository" {
 
 variable "image_tag" {
   type    = string
-  default = "0.1.1"
+  default = "1.0.0"
 }
 
 variable "image_pull_policy" {

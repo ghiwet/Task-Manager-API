@@ -1,6 +1,6 @@
 apiVersion: v2
 name: task-manager
-description: Helm chart for the Task Manager API (deploys the app; backing Postgres/Kafka/Keycloak are prerequisites)
+description: Helm chart for the Task Manager API (deploys the app; backing Postgres/Kafka/Redis/Elasticsearch/Keycloak are prerequisites)
 type: application
-version: 0.1.0
-appVersion: "0.1.1"
+version: 1.0.0
+appVersion: "1.0.0"

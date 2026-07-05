@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.example</groupId>
 	<artifactId>taskmanager</artifactId>
-	<version>0.1.1</version>
+	<version>1.0.0</version>
 	<name>taskmanager</name>
 	<description>A simple RESTful API built with **Spring Boot** for managing tasks. Ideal for learning and demonstrating Spring Boot, JPA, REST, and CRUD operations.</description>
 	<url/>

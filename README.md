@@ -154,7 +154,7 @@ Postgres (with the `vector` extension), Kafka, Redis, Elasticsearch, and Keycloa
 `values.yaml` under `config.*`.
 ```bash
 helm install tm helm/task-manager \
-  --set image.tag=0.1.1 \
+  --set image.tag=1.0.0 \
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
 The Deployment has actuator startup/readiness/liveness probes and resource limits. Optional extras:
