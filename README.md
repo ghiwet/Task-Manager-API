@@ -1,34 +1,68 @@
 # 📋 Task Manager API
 
 [![CI](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml/badge.svg)](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml)
+![Java](https://img.shields.io/badge/Java-25-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
-A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentication (Google, GitHub, Keycloak), Kafka event-driven notifications, task ownership, pagination, and Testcontainers-based testing. Flyway is used for database versioning, and Swagger provides interactive API documentation.
+> A production-shaped, event-driven task API — multi-tenant, observable, AI-enabled, and deployable from Docker to Kubernetes.
+
+A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, and Terraform.
+
+## 🗺️ Architecture
+
+Request path and backing services:
+
+```mermaid
+flowchart LR
+    Client([Client / Swagger UI]) -->|JWT| API[Task Manager API]
+    API -->|read-write, RLS| PG[(PostgreSQL + pgvector)]
+    API -->|cache-aside, rate limit| REDIS[(Redis)]
+    API -->|full-text search| ES[(Elasticsearch)]
+    API -->|OAuth2 / JWT| KC[Keycloak]
+    API -->|chat| OpenAI[(OpenAI)]
+    API -.->|metrics, traces| OBS[Prometheus, Grafana, Tempo]
+```
+
+Writes use a **transactional outbox** → Kafka → idempotent consumers that keep notifications, embeddings, and the search index in sync (no dual-write, no lost events):
+
+```mermaid
+flowchart LR
+    SVC[TaskService] -->|same DB tx| OUT[(outbox)]
+    OUT -->|scheduled relay| K{{Kafka: task-events}}
+    K --> N[Notification consumer]
+    K --> E[Embedding consumer] --> PGV[(pgvector)]
+    K --> S[Search-index consumer] --> ESX[(Elasticsearch)]
+```
 
 ---
 
-## 🚀 Features
+## ✨ Highlights
 
-- ✅ CRUD operations for tasks and users
-- 🔐 OAuth2 authentication (Google, GitHub, Keycloak) + JWT resource server
-- 👤 Task ownership — users only see and modify their own tasks
-- 🗑️ Two-tier delete — users delete own tasks, admins delete any task within their tenant
-- 📄 Paginated task listing with sorting
-- 📨 Kafka event-driven notifications (CREATED, UPDATED, COMPLETED, DELETED)
-- 📤 Transactional outbox — events are staged in the task's DB transaction and relayed to Kafka, so none are lost
-- 💀 Dead letter topic (DLT) for failed message handling
-- 🗃️ PostgreSQL database with Flyway migrations
-- 📑 Swagger UI for API exploration
-- 📊 Observability — Micrometer metrics, Prometheus scraping, Grafana dashboard
-- 🔭 Distributed tracing — OpenTelemetry spans (HTTP, JDBC, Kafka) exported to Tempo, one trace per request across services
-- 🚦 Rate limiting — Redis-backed token buckets (Bucket4j), shared across replicas, with `429` + `Retry-After`
-- ⚡ Redis cache-aside for task reads (evict-on-write, fail-open)
-- 🔍 Full-text task search (Elasticsearch) — keyword search over your tasks, highlighted and owner/tenant-scoped
-- 🛡️ Security hardening — HTTP security headers (HSTS, CSP, etc.) and request input validation
-- 🏢 Multi-tenancy — tenant isolation enforced at the database layer with PostgreSQL row-level security (RLS)
-- 🤖 AI task assistant — RAG over your tasks (Spring AI + pgvector), scoped to your tenant and tasks
-- 🧯 Resilience — circuit breaker, retry, timeout, and graceful fallback (Resilience4j) around the LLM call
-- 🚀 Deployable — Docker image (GHCR via CI), Helm chart, and Terraform that provisions the whole stack on kind
-- 🧪 Integration tests with MockMvc, EmbeddedKafka, and Testcontainers
+- **API & auth** — versioned REST (`/api/v1`), OAuth2 login (Google / GitHub / Keycloak) + JWT resource server, per-user task ownership, admin two-tier delete, pagination, Swagger UI
+- **Event-driven** — Kafka task events with a **transactional outbox** (atomic with the DB write, so none are lost) and a dead-letter topic
+- **Data & search** — PostgreSQL + Flyway, **Redis cache-aside**, **Elasticsearch** full-text search, pgvector for semantic retrieval
+- **Multi-tenancy & security** — tenant isolation via PostgreSQL **row-level security**, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation
+- **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
+- **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary)
+- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags), **Helm** chart, **Terraform** that provisions the whole stack on kind, Testcontainers integration tests
+
+---
+
+## 🎬 Demo
+
+A full terminal walkthrough — real `curl` requests and responses (auth → create → full-text search →
+AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
+
+**Screenshots** _(drop captures into [`docs/images/`](docs/images/))_ — Swagger UI, the Grafana
+dashboard, a distributed trace in Tempo, and search results. Once added, uncomment to embed:
+
+<!--
+![Swagger UI](docs/images/swagger.png)
+![Grafana dashboard](docs/images/grafana.png)
+![Distributed trace (Tempo)](docs/images/trace.png)
+![Demo](docs/images/demo.gif)
+-->
 
 ---
 
@@ -55,35 +89,36 @@ A Spring Boot RESTful backend for managing tasks and users with OAuth2 authentic
 
 ## 📁 Project Structure
 ```
-src
-├── main
-│ ├── java/com/example/taskmanager
-│ │ ├── config # KafkaConfig, KafkaConsumerConfig, RateLimitProperties
-│ │ ├── controller # TaskController, UserController
-│ │ ├── event # TaskEvent, TaskEventKafkaPublisher, Consumers
-│ │ ├── model # Task, AppUser (both tenant-scoped via tenant_id)
-│ │ ├── repository # TaskRepository, AppUserRepository
-│ │ ├── service # TaskService, AppUserService
-│ │ ├── security # WebSecurityConfig, RateLimitFilter
-│ │ ├── tenant # TenantContext, TenantFilter, Hibernate multi-tenancy config
-│ │ └── ai # AssistantController/Service/Retriever, task embedding consumer
-│ └── resources
-│ ├── db/migration # Flyway SQL scripts
-│ ├── application.properties
-└── test
-└── keycloak/rela-export.json
-└── DockerFile
-└── docker-compose.yml
+├── src/main/java/com/example/taskmanager
+│   ├── config       # Kafka, OpenAPI, cache configuration
+│   ├── controller   # TaskController, UserController
+│   ├── event        # TaskEvent + Kafka consumers (notification, DLT)
+│   ├── outbox       # transactional outbox (entity, scheduled relay)
+│   ├── model        # Task, AppUser (tenant-scoped via tenant_id)
+│   ├── repository   # Spring Data JPA repositories
+│   ├── service      # TaskService (business logic, cache-aside)
+│   ├── security     # WebSecurityConfig, Redis-backed rate limiting
+│   ├── tenant       # RLS multi-tenancy (context, filter, Hibernate)
+│   ├── ai           # RAG assistant + embedding consumer (pgvector)
+│   └── search       # Elasticsearch full-text search + index consumer
+├── src/main/resources
+│   ├── db/migrations        # Flyway SQL scripts
+│   └── application.properties
+├── src/test                 # integration tests (Testcontainers, EmbeddedKafka)
+├── helm/task-manager        # Helm chart
+├── terraform                # IaC: kind cluster + backing services + app
+├── keycloak/realm-export.json
+├── Dockerfile
+├── docker-compose.yml
 └── pom.xml
 ```
 
 ## 🌱 Branch Info
- main:  OAuth2-secured API
 
- basic: Uses basic auth with JDBC users
+- **`main`** — the full application this README documents (OAuth2/JWT, multi-tenancy, Kafka outbox, Redis, Elasticsearch, AI assistant, observability, CI/CD, Helm, Terraform)
+- **`basic`** — a simpler variant using basic auth with JDBC users
+- **`form`** — form login with a Thymeleaf login page
 
- form: Form login with Thymeleaf-based login page
- 
 ## 🔐 Registering OAuth2 Providers
 To enable OAuth2 authentication using Google and GitHub, follow these steps to register your application on each provider.
 
