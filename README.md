@@ -45,7 +45,7 @@ flowchart LR
 - **Multi-tenancy & security** — tenant isolation via PostgreSQL **row-level security**, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation
 - **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
 - **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary)
-- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags), **Helm** chart, **Terraform** that provisions the whole stack on kind, Testcontainers integration tests
+- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the whole stack on kind, Testcontainers integration tests
 
 ---
 
@@ -53,16 +53,6 @@ flowchart LR
 
 A full terminal walkthrough — real `curl` requests and responses (auth → create → full-text search →
 AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
-
-**Screenshots** _(drop captures into [`docs/images/`](docs/images/))_ — Swagger UI, the Grafana
-dashboard, a distributed trace in Tempo, and search results. Once added, uncomment to embed:
-
-<!--
-![Swagger UI](docs/images/swagger.png)
-![Grafana dashboard](docs/images/grafana.png)
-![Distributed trace (Tempo)](docs/images/trace.png)
-![Demo](docs/images/demo.gif)
--->
 
 ---
 
@@ -182,6 +172,17 @@ publishes a container image to GitHub Container Registry (`release.yml`):
 ```bash
 git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api:1.0.0 (+ :latest)
 ```
+
+### 🔒 Security Scanning (CI)
+A layered security workflow (`security.yml`, manually triggered via `workflow_dispatch`) runs:
+
+| Tool | Type | Checks |
+|------|------|--------|
+| **CodeQL** | SAST | static analysis of the Java code |
+| **Semgrep** | SAST | rule-based scanning (`p/ci` ruleset) |
+| **OWASP Dependency-Check** | SCA | known-vulnerable dependencies |
+| **TruffleHog** | Secrets | leaked credentials across the repo |
+| **OWASP ZAP** | DAST | baseline scan against the running app |
 
 ### ☸️ Kubernetes (Helm)
 A Helm chart lives in `helm/task-manager` — it deploys the app (pulling the GHCR image) and expects
