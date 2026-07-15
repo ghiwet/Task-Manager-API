@@ -74,8 +74,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneral(Exception ex) {
         meterRegistry.counter("http.errors.total", "type", "Exception", "status", "500").increment();
-        // Log the detail server-side; never echo internal exception text (SQL, constraint or class
-        // names) back to the client, as that discloses schema and implementation internals.
+        // Log server-side; never echo internal exception text (SQL, class names) to the client.
         log.error("Unhandled exception", ex);
         return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
     }

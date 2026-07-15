@@ -83,9 +83,8 @@ public class WebSecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            // A validly-signed token may carry no realm roles (service accounts, users with none),
-            // in which case realm_access — or its roles entry — is absent; treat that as no
-            // authorities rather than dereferencing null and failing the request with a 500.
+            // A valid token may carry no realm roles, so realm_access (or its roles entry) can be
+            // absent; treat that as no authorities instead of dereferencing null.
             Map<String, Object> realmAccess = jwt.getClaim("realm_access");
             if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
                 return List.of();

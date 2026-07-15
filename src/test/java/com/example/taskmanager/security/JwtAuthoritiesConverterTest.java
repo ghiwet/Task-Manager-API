@@ -23,8 +23,8 @@ class JwtAuthoritiesConverterTest {
         return Jwt.withTokenValue("token").header("alg", "none").subject("user1");
     }
 
-    // Only the ROLE_ authorities are contributed by our converter; Spring Security 7 also adds a
-    // framework FACTOR_BEARER authority that is irrelevant to our hasAuthority(...) rules.
+    // Our converter only adds ROLE_ authorities; Spring Security 7 also attaches FACTOR_BEARER,
+    // which our hasAuthority(...) rules ignore.
     private Set<String> roleAuthoritiesOf(Jwt jwt) {
         return converter.convert(jwt).getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)

@@ -4,10 +4,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Self-service user update. Only the password is bindable; {@code roles} is intentionally
- * absent so a caller cannot escalate their own privileges by putting it in the request body.
- * A null password means "leave it unchanged"; when present it must meet the same strength
- * policy as registration.
+ * Self-service user update. Only the password is bindable — no {@code roles} field, so a caller
+ * can't escalate their own privileges. A null password leaves it unchanged.
  */
 public record UserUpdateDto(
         @Size(min = 8, max = 128)

@@ -73,8 +73,8 @@ public class AppUserService implements UserDetailsService {
         AppUser existingUser = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AppUserNotFoundException("Username doesn't exist"));
 
-        // Only the password is updatable here; roles are never taken from the request body,
-        // so a user cannot grant themselves ROLE_ADMIN via self-service update.
+        // Only the password is updatable; roles are never bound from the body, so a user
+        // can't grant themselves ROLE_ADMIN.
         if (updates.password() != null) {
             existingUser.setPassword(passwordEncoder.encode(updates.password()));
         }

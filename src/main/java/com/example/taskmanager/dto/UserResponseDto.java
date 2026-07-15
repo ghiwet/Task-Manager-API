@@ -5,10 +5,7 @@ import com.example.taskmanager.model.AppUser;
 
 import java.util.Set;
 
-/**
- * Public view of a user. Deliberately omits the password hash and the internal
- * {@code tenantId} so neither is ever serialized to a client.
- */
+/** Public view of a user: no password hash, no tenantId. */
 public record UserResponseDto(Long id, String username, Set<Role> roles) {
 
     public static UserResponseDto from(AppUser user) {
