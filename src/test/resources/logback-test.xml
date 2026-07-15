@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test-only logging. Keeps Spring Boot's normal console format (incl. trace/span correlation) but
+  quiets the embedded Kafka broker, whose INFO chatter otherwise floods test output: periodic
+  controller performance summaries, consumer-coordinator rediscovery, and a cosmetic temp-dir
+  error logged while the broker shuts down.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="kafka" level="WARN"/>
+    <logger name="org.apache.kafka.storage.internals.log.LogDirFailureChannel" level="OFF"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
