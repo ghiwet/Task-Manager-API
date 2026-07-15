@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -82,8 +83,15 @@ public class WebSecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            var roles = ((Map<String, List<String>>) jwt.getClaim("realm_access")).get("roles");
+            // A validly-signed token may carry no realm roles (service accounts, users with none),
+            // in which case realm_access — or its roles entry — is absent; treat that as no
+            // authorities rather than dereferencing null and failing the request with a 500.
+            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
+                return List.of();
+            }
             return roles.stream()
+                    .map(String::valueOf)
                     .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
                     .collect(Collectors.toList());
         });
