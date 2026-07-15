@@ -11,8 +11,14 @@ permissions:
   packages: write   # push the image to GHCR
 
 jobs:
+  # Run the full CI suite against the tagged commit; publishing is gated on it passing.
+  test:
+    name: Test
+    uses: ./.github/workflows/ci.yml
+
   publish-image:
     name: Build & publish image to GHCR
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,7 +31,7 @@ jobs:
           java-version: '25'
           cache: maven
 
-      # CI validates tests on main; the release build just packages the jar the image needs.
+      # The test job (reused CI) already ran the suite on this commit; here we just package the jar.
       - name: Build jar
         run: ./mvnw -B package -DskipTests
 

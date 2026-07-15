@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:   # reused by release.yml to gate publishing on the test suite
 
 permissions:
   contents: read
@@ -13,6 +14,11 @@ jobs:
   build-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    env:
+      # Stable path for the ONNX embedding model so it is cached across runs instead of being
+      # re-downloaded (~90MB) each time. Overrides the application.properties default via Spring
+      # relaxed binding; the env is inherited by the Surefire fork.
+      SPRING_AI_EMBEDDING_TRANSFORMER_CACHE_DIRECTORY: ${{ github.workspace }}/.onnx-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,6 +29,12 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+
+      - name: Cache ONNX embedding model
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.onnx-cache
+          key: spring-ai-onnx-all-MiniLM-L6-v2
 
       # Tests use Testcontainers (Docker is preinstalled on ubuntu-latest) and EmbeddedKafka;
       # they need no external services or secrets.
