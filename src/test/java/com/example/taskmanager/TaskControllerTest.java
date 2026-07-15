@@ -204,4 +204,37 @@ class TaskControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.content.length()").value(0))
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
+
+    @Test
+    @Order(12)
+    void testCreateWithOversizedTitleReturnsBadRequest() throws Exception {
+        TaskCreateDto dto = new TaskCreateDto("a".repeat(256), "Desc", false);
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(13)
+    void testUpdateWithBlankTitleReturnsBadRequest() throws Exception {
+        TaskCreateDto create = new TaskCreateDto("Valid Title", "Desc", false);
+        MvcResult created = mockMvc.perform(post("/api/v1/tasks")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(create)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long createdId = jsonMapper.readValue(created.getResponse().getContentAsString(), TaskDto.class).getId();
+
+        // Update now validates like create: a blank title is a 400, not a persisted blank.
+        TaskCreateDto blank = new TaskCreateDto("", "Desc", false);
+        mockMvc.perform(put("/api/v1/tasks/" + createdId)
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(blank)))
+                .andExpect(status().isBadRequest());
+    }
 }

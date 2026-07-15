@@ -7,8 +7,11 @@ package com.example.taskmanager.tenant;
  */
 public final class TenantContext {
 
-    /** Tenant used when no tenant can be resolved (e.g. unauthenticated requests, startup). */
-    public static final String DEFAULT_TENANT = "default";
+    /**
+     * Bound when no tenant is resolved. A reserved sentinel no real tenant uses, so RLS matches no
+     * rows and default-denies instead of falling back to a populated bucket (e.g. {@code 'default'}).
+     */
+    public static final String UNRESOLVED_TENANT = "__unresolved__";
 
     private static final ThreadLocal<String> CURRENT_TENANT = new ThreadLocal<>();
 
@@ -21,7 +24,7 @@ public final class TenantContext {
 
     public static String getTenantId() {
         String tenantId = CURRENT_TENANT.get();
-        return tenantId != null ? tenantId : DEFAULT_TENANT;
+        return tenantId != null ? tenantId : UNRESOLVED_TENANT;
     }
 
     public static void clear() {

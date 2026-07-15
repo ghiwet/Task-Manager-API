@@ -3,6 +3,8 @@ package com.example.taskmanager.ai;
 import com.example.taskmanager.config.KafkaConfig;
 import com.example.taskmanager.event.TaskEvent;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +14,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class TaskEmbeddingConsumer {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskEmbeddingConsumer.class);
 
     private final TaskEmbeddingService embeddingService;
 
@@ -25,9 +29,15 @@ public class TaskEmbeddingConsumer {
         if (event.getTenantId() == null || event.getTenantId().isBlank()) {
             return; // can't tenant-scope an embedding without a tenant
         }
-        switch (event.getEventType()) {
-            case CREATED, UPDATED, COMPLETED -> embeddingService.upsert(event);
-            case DELETED -> embeddingService.delete(event);
+        try {
+            switch (event.getEventType()) {
+                case CREATED, UPDATED, COMPLETED -> embeddingService.upsert(event);
+                case DELETED -> embeddingService.delete(event);
+            }
+        } catch (Exception ex) {
+            // Fail open: a pgvector blip or bad event skips instead of stalling the partition.
+            // Caught outside the service's @Transactional so the tx rolls back.
+            log.warn("Failed to sync embedding for task {} ({}); skipping", event.getTaskId(), ex.getMessage());
         }
     }
 }
