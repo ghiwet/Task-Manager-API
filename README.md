@@ -3,7 +3,7 @@
 [![CI](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml/badge.svg)](https://github.com/ghiwet/Task-Manager-API/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-25-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 
 > A production-shaped, event-driven task API — multi-tenant, observable, AI-enabled, and deployable from Docker to Kubernetes.
 
@@ -170,7 +170,7 @@ export OPENAI_API_KEY=sk-...
 GitHub Actions runs the build + full test suite on every push and PR (`ci.yml`). Pushing a version tag
 publishes a container image to GitHub Container Registry (`release.yml`):
 ```bash
-git tag v1.0.0 && git push origin v1.0.0   # → ghcr.io/ghiwet/task-manager-api:1.0.0 (+ :latest)
+git tag v1.0.1 && git push origin v1.0.1   # → ghcr.io/ghiwet/task-manager-api:1.0.1 (+ :latest)
 ```
 
 ### 🔒 Security Scanning (CI)
@@ -190,7 +190,7 @@ Postgres (with the `vector` extension), Kafka, Redis, Elasticsearch, and Keycloa
 `values.yaml` under `config.*`.
 ```bash
 helm install tm helm/task-manager \
-  --set image.tag=1.0.0 \
+  --set image.tag=1.0.1 \
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
 The Deployment has actuator startup/readiness/liveness probes and resource limits. Optional extras:
