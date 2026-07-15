@@ -1,8 +1,11 @@
 package com.example.taskmanager.exception;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +17,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final MeterRegistry meterRegistry;
 
@@ -58,9 +63,20 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Resource not found");
     }
 
+    // Concurrent modification of an @Version-guarded entity is a client-retriable conflict, not a 500.
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        meterRegistry.counter("http.errors.total", "type", "ObjectOptimisticLockingFailureException", "status", "409").increment();
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The resource was modified by another request. Reload the latest version and retry.");
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneral(Exception ex) {
         meterRegistry.counter("http.errors.total", "type", "Exception", "status", "500").increment();
-        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error: " + ex.getMessage());
+        // Log the detail server-side; never echo internal exception text (SQL, constraint or class
+        // names) back to the client, as that discloses schema and implementation internals.
+        log.error("Unhandled exception", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
     }
 }
