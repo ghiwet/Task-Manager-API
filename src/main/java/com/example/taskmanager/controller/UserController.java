@@ -1,6 +1,8 @@
 package com.example.taskmanager.controller;
 
 import com.example.taskmanager.dto.UserRegistrationDto;
+import com.example.taskmanager.dto.UserResponseDto;
+import com.example.taskmanager.dto.UserUpdateDto;
 import com.example.taskmanager.exception.AppUserNotFoundException;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.service.AppUserService;
@@ -24,38 +26,40 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<AppUser> getCurrentUser(Authentication authentication) {
+    public ResponseEntity<UserResponseDto> getCurrentUser(Authentication authentication) {
         String username = authentication.getName();
         AppUser user = userService.findUserByUserName(username);
         if(Objects.isNull(user)) {
             throw new AppUserNotFoundException("User not found");
         }
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(UserResponseDto.from(user));
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<AppUser>> getAllUsers() {
-        List<AppUser> users = userService.getAllUsers();
+    public ResponseEntity<List<UserResponseDto>> getAllUsers() {
+        List<UserResponseDto> users = userService.getAllUsers().stream()
+                .map(UserResponseDto::from)
+                .toList();
         return ResponseEntity.ok(users);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AppUser> registerUser(@RequestBody @Valid UserRegistrationDto registration) {
+    public ResponseEntity<UserResponseDto> registerUser(@RequestBody @Valid UserRegistrationDto registration) {
         AppUser newUser = new AppUser();
         newUser.setUsername(registration.getUsername());
         newUser.setPassword(registration.getPassword());
         AppUser created = userService.registerNewUser(newUser);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponseDto.from(created));
     }
 
     @PutMapping("/{username}")
-    public ResponseEntity<AppUser> updateUser(@PathVariable String username, @RequestBody AppUser userUpdates, Authentication authentication) {
-        if (!authentication.getName().equals(username) && !authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+    public ResponseEntity<UserResponseDto> updateUser(@PathVariable String username, @RequestBody @Valid UserUpdateDto userUpdates, Authentication authentication) {
+        if (!authentication.getName().equals(username) && authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         AppUser updated = userService.updateUser(username, userUpdates);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(UserResponseDto.from(updated));
     }
 
     @DeleteMapping("/{username}")

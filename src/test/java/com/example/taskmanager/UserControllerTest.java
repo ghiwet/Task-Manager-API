@@ -1,5 +1,7 @@
 package com.example.taskmanager;
 
+import com.example.taskmanager.dto.UserResponseDto;
+import com.example.taskmanager.enumration.Role;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.repository.AppUserRepository;
 import tools.jackson.databind.json.JsonMapper;
@@ -16,7 +18,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -95,10 +99,15 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        AppUser userResponse = jsonMapper.readValue(result.getResponse().getContentAsString(), AppUser.class);
+        String body = result.getResponse().getContentAsString();
+        assertFalse(body.contains("password"), "response must not leak the password hash");
 
-        assertEquals("user1", userResponse.getUsername());
-        assertTrue(passwordEncoder.matches("Pass1!word", userResponse.getPassword()));
+        UserResponseDto userResponse = jsonMapper.readValue(body, UserResponseDto.class);
+        assertEquals("user1", userResponse.username());
+
+        // The stored hash is still verifiable via the repository, it is just never serialized.
+        AppUser stored = userRepository.findByUsername("user1").orElseThrow();
+        assertTrue(passwordEncoder.matches("Pass1!word", stored.getPassword()));
     }
 
     @Test
@@ -113,25 +122,24 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Order(4)
     void testUpdateUser() throws Exception {
         Map<String, Object> user = Map.of(
-                "password", "newPass"
+                "password", "NewPass1!word"
         );
-        MvcResult result = mockMvc
+        mockMvc
                 .perform(put("/api/v1/users/" + username)
                         .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
-                .andExpect(status().isOk())
-                .andReturn();
+                .andExpect(status().isOk());
 
-        AppUser userResponse = jsonMapper.readValue(result.getResponse().getContentAsString(), AppUser.class);
-        assertTrue(passwordEncoder.matches("newPass", userResponse.getPassword()));
+        AppUser stored = userRepository.findByUsername(username).orElseThrow();
+        assertTrue(passwordEncoder.matches("NewPass1!word", stored.getPassword()));
     }
 
     @Test
     @Order(5)
     void testUpdateUserForbidden() throws Exception {
         Map<String, Object> user = Map.of(
-                "password", "anotherPass"
+                "password", "Another1!pass"
         );
         mockMvc
                 .perform(put("/api/v1/users/" + username)
@@ -145,7 +153,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Order(6)
     void testUpdateUserByAdmin() throws Exception {
         Map<String, Object> user = Map.of(
-                "password", "anotherPass"
+                "password", "Admin1!pass"
         );
         mockMvc
                 .perform(put("/api/v1/users/" + username)
@@ -193,5 +201,35 @@ public class UserControllerTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(10)
+    void testUpdateCannotEscalateRoles() throws Exception {
+        // A fresh plain user, registered with the default ROLE_USER.
+        Map<String, Object> registration = Map.of(
+                "username", "escuser",
+                "password", "Escpass1!word"
+        );
+        mockMvc.perform(post("/api/v1/users/register")
+                        .with(jwt().jwt(j -> j.subject("escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(registration)))
+                .andExpect(status().isCreated());
+
+        // Attempt to smuggle an admin role through the self-service update body.
+        Map<String, Object> escalation = Map.of(
+                "password", "Escpass2!word",
+                "roles", List.of("ROLE_ADMIN")
+        );
+        mockMvc.perform(put("/api/v1/users/escuser")
+                        .with(jwt().jwt(j -> j.subject("escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(escalation)))
+                .andExpect(status().isOk());
+
+        // The smuggled role must be ignored: the user is still only a ROLE_USER.
+        AppUser stored = userRepository.findByUsername("escuser").orElseThrow();
+        assertEquals(Set.of(Role.ROLE_USER), stored.getRoles());
     }
 }

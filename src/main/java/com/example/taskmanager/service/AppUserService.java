@@ -1,5 +1,6 @@
 package com.example.taskmanager.service;
 
+import com.example.taskmanager.dto.UserUpdateDto;
 import com.example.taskmanager.enumration.Role;
 import com.example.taskmanager.exception.AppUserNotFoundException;
 import com.example.taskmanager.model.AppUser;
@@ -68,20 +69,16 @@ public class AppUserService implements UserDetailsService {
         return userRepository.findAll();
     }
 
-    public AppUser updateUser(String username, AppUser user) {
-        if (userRepository.findByUsername(username).isEmpty()) {
-            throw new AppUserNotFoundException("Username doesn't exist");
-        }
-        AppUser existingUser = userRepository.findByUsername(username).get();
+    public AppUser updateUser(String username, UserUpdateDto updates) {
+        AppUser existingUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppUserNotFoundException("Username doesn't exist"));
 
-        if(user.getPassword() != null) {
-            existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
-        }
-        if(user.getRoles() != null && !user.getRoles().isEmpty()) {
-            existingUser.setRoles(user.getRoles());
+        // Only the password is updatable here; roles are never taken from the request body,
+        // so a user cannot grant themselves ROLE_ADMIN via self-service update.
+        if (updates.password() != null) {
+            existingUser.setPassword(passwordEncoder.encode(updates.password()));
         }
         return userRepository.save(existingUser);
-
     }
 
     public void deleteUser(String username) {
