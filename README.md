@@ -7,7 +7,7 @@
 
 > A production-shaped, event-driven task API — multi-tenant, observable, AI-enabled, and deployable from Docker to Kubernetes.
 
-A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, and Terraform.
+A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, Terraform, and Argo CD (GitOps).
 
 ## 🗺️ Architecture
 
@@ -45,7 +45,7 @@ flowchart LR
 - **Multi-tenancy & security** — tenant isolation via PostgreSQL **row-level security**, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation
 - **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
 - **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary)
-- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the whole stack on kind, Testcontainers integration tests
+- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the platform on kind, **Argo CD** delivering the app via GitOps, Testcontainers integration tests
 
 ---
 
@@ -96,7 +96,8 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 │   └── application.properties
 ├── src/test                 # integration tests (Testcontainers, EmbeddedKafka)
 ├── helm/task-manager        # Helm chart
-├── terraform                # IaC: kind cluster + backing services + app
+├── terraform                # IaC: kind cluster + backing services + Argo CD
+├── argocd/applications      # Argo CD Application (GitOps delivery of the app)
 ├── keycloak/realm-export.json
 ├── Dockerfile
 ├── docker-compose.yml
@@ -105,9 +106,10 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 
 ## 🌱 Branch Info
 
-- **`main`** — the full application this README documents (OAuth2/JWT, multi-tenancy, Kafka outbox, Redis, Elasticsearch, AI assistant, observability, CI/CD, Helm, Terraform)
+- **`main`** — the full application this README documents (OAuth2/JWT, multi-tenancy, Kafka outbox, Redis, Elasticsearch, AI assistant, observability, CI/CD, Helm, Terraform, Argo CD/GitOps)
 - **`basic`** — a simpler variant using basic auth with JDBC users
 - **`form`** — form login with a Thymeleaf login page
+- **`terraform-deploy`** — the same application as `main`, but deployed by Terraform directly via a Helm release (push-based CD) instead of Argo CD/GitOps — a frozen snapshot of the pre-GitOps deployment approach
 
 ## 🔐 Registering OAuth2 Providers
 To enable OAuth2 authentication using Google and GitHub, follow these steps to register your application on each provider.
@@ -217,12 +219,14 @@ helm uninstall tm && kind delete cluster --name tm   # cleanup
 > kind/compose network boundary) — harmless here; run Kafka in-cluster for full connectivity.
 
 ### 🏗️ Provision with Terraform
-`terraform/` provisions the **whole stack** as code — a kind cluster, the backing services
-(Postgres/Redis/Kafka/Elasticsearch/Keycloak) **in-cluster**, and the app (via the Helm chart) — organized as
-reusable modules (`cluster`, `backing-services`, `app`) composed by a root config. Here Kafka is
-advertised as its in-cluster service, so it connects fully (unlike the compose+kind setup above).
-Run it in three steps — the local image must be loaded **after** the cluster exists but **before** the
-app is deployed:
+`terraform/` provisions the **platform** as code — a kind cluster, the backing services
+(Postgres/Redis/Kafka/Elasticsearch/Keycloak) **in-cluster**, and **Argo CD** — as reusable modules
+(`cluster`, `backing-services`, `argocd`) composed by a root config. The app itself is *not* deployed by
+Terraform; Argo CD delivers it (see below). Kafka is advertised as its in-cluster service, so it connects
+fully (unlike the compose+kind setup above).
+
+Run it in three steps — the local image is loaded **after** the cluster exists so the app's pods find it
+without pulling from GHCR:
 ```bash
 cd terraform
 terraform init
@@ -230,24 +234,51 @@ terraform init
 # 1. create just the cluster
 terraform apply -auto-approve -target=module.cluster
 
-# 2. build the image and load it into the now-existing cluster
-(cd .. && ./mvnw package -DskipTests && docker build -t task-manager:local .)
-kind load docker-image task-manager:local --name task-manager
+# 2. build the image under the tag the Argo CD Application pins, and load it into the cluster
+(cd .. && ./mvnw package -DskipTests && docker build -t ghcr.io/ghiwet/task-manager-api:1.0.1 .)
+kind load docker-image ghcr.io/ghiwet/task-manager-api:1.0.1 --name task-manager
 
-# 3. deploy the backing services + the app
-terraform apply -auto-approve \
-  -var image_repository=task-manager -var image_tag=local -var image_pull_policy=Never
+# 3. bring up the backing services + Argo CD, which then syncs the app from Git
+terraform apply -auto-approve
+
+# apply returns once the Argo CD Application is created; the app is synced asynchronously, so
+# wait for it before reaching in (Argo CD — not the terraform exit code — owns app health)
+kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application/task-manager --timeout=5m
 
 # reach it (the command is also printed as the `app_port_forward` output)
 kubectl -n task-manager port-forward svc/task-manager-task-manager 8080:8080
 curl http://localhost:8080/actuator/health          # {"status":"UP"}
 
 # tear it all down (cluster included)
-terraform destroy -auto-approve \
-  -var image_repository=task-manager -var image_tag=local -var image_pull_policy=Never
+terraform destroy -auto-approve
 ```
-Without the `image_*` overrides and the load step, it pulls `ghcr.io/ghiwet/task-manager-api` from GHCR
-(the package must be public, or supply an image pull secret) — then a single `terraform apply` suffices.
+Skip the build/load step to have Argo CD pull the released `ghcr.io/ghiwet/task-manager-api` image from
+GHCR instead (the package must be public, or supply an image pull secret).
+
+### 🚀 GitOps Delivery (Argo CD)
+Terraform bootstraps Argo CD (push); from there Argo CD delivers the app (pull). The
+`argocd/applications/task-manager.yaml` **Application** points at the Helm chart in this repo and syncs it
+with **automated prune + self-heal** — the cluster continuously converges on Git, and manual drift (a
+deleted Deployment, an edited replica count) is reverted within seconds. Releasing a version is just
+bumping `image.tag` in that Application and pushing.
+
+```mermaid
+flowchart LR
+    TF[terraform apply] --> KIND[kind cluster]
+    TF --> SVC[backing services]
+    TF --> ARGO[Argo CD]
+    TF --> APPCR[Application CR]
+    GH[GitHub: Helm chart] -->|sync| ARGO
+    ARGO -->|reconcile| APP[task-manager app]
+    SVC -.-> APP
+```
+
+Open the Argo CD UI to watch it sync:
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8083:80    # then http://localhost:8083
+# user: admin — initial password:
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+```
 
 ### 🧪 Running Tests
 `./mvnw test`

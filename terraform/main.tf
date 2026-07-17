@@ -17,6 +17,17 @@ provider "helm" {
   }
 }
 
+provider "kubectl" {
+  config_path      = module.cluster.kubeconfig_path
+  load_config_file = true
+}
+
+# GitOps controller. Terraform installs Argo CD (push); Argo CD then delivers the app by syncing
+# this repo (pull) — see modules/argocd and the argocd/ manifests.
+module "argocd" {
+  source = "./modules/argocd"
+}
+
 resource "kubernetes_namespace" "app" {
   metadata {
     name = var.namespace
@@ -29,21 +40,10 @@ module "backing_services" {
   realm_export_path = "${path.root}/../keycloak/realm-export.json"
 }
 
-module "app" {
-  source = "./modules/app"
-  # Wait for the backing services' pods to roll out, not just their Services to exist,
-  # so the app doesn't start before Postgres/Kafka/Keycloak are ready on a fresh apply.
-  depends_on = [module.backing_services]
-
-  namespace          = kubernetes_namespace.app.metadata[0].name
-  chart_path         = "${path.root}/../helm/task-manager"
-  image_repository   = var.image_repository
-  image_tag          = var.image_tag
-  image_pull_policy  = var.image_pull_policy
-  openai_api_key     = var.openai_api_key
-  postgres_service   = module.backing_services.postgres_service
-  redis_service      = module.backing_services.redis_service
-  kafka_bootstrap    = module.backing_services.kafka_bootstrap
-  keycloak_base_url  = module.backing_services.keycloak_base_url
-  elasticsearch_uris = module.backing_services.elasticsearch_uris
+# Bootstrap the Argo CD Application (a CRD instance). Applied with the kubectl provider because the
+# kubernetes provider's manifest resource requires the CRD to exist at plan time, which it does not
+# on a fresh apply. After this, Argo CD owns the app's lifecycle by syncing the chart from Git.
+resource "kubectl_manifest" "task_manager_app" {
+  depends_on = [module.argocd, module.backing_services]
+  yaml_body  = file("${path.root}/../argocd/applications/task-manager.yaml")
 }

@@ -1,0 +1,28 @@
+# Argo CD Application: the GitOps definition of the Task Manager deployment. Terraform applies this
+# once to bootstrap it; from then on Argo CD reconciles the app from this repo — a push that changes
+# the chart or the image tag below is the deploy. The chart's defaults already point config at the
+# in-cluster backing services, so only the image tag is pinned here (bump it to release a version).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: task-manager
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # cascade-delete synced resources when the App is removed
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ghiwet/Task-Manager-API
+    targetRevision: main
+    path: helm/task-manager
+    helm:
+      valuesObject:
+        image:
+          tag: "1.0.1"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: task-manager           # same namespace as the backing services (created by Terraform)
+  syncPolicy:
+    automated:
+      prune: true                     # remove resources dropped from the chart
+      selfHeal: true                  # revert manual drift back to Git
