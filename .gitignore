@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Sealed Secrets controller private key (never commit; public cert is committed)
+sealed-secrets/tls.key

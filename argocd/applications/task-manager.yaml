@@ -1,7 +1,7 @@
 # Argo CD Application: the GitOps definition of the Task Manager deployment. Terraform applies this
 # once to bootstrap it; from then on Argo CD reconciles the app from this repo — a push that changes
-# the chart or the image tag below is the deploy. The chart's defaults already point config at the
-# in-cluster backing services, so only the image tag is pinned here (bump it to release a version).
+# the chart or the image tag is the deploy. Two sources: the app's Helm chart, plus the encrypted
+# SealedSecret, which a sync-wave applies first so the app's Secret exists before its pods start.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,14 +11,24 @@ metadata:
     - resources-finalizer.argocd.argoproj.io   # cascade-delete synced resources when the App is removed
 spec:
   project: default
-  source:
-    repoURL: https://github.com/ghiwet/Task-Manager-API
-    targetRevision: main
-    path: helm/task-manager
-    helm:
-      valuesObject:
-        image:
-          tag: "1.0.1"
+  sources:
+    # The app's Secret, decrypted from the committed SealedSecret (annotated sync-wave "-1", so it
+    # syncs and the controller unseals it before the app pods that consume it via envFrom).
+    - repoURL: https://github.com/ghiwet/Task-Manager-API
+      targetRevision: main
+      path: argocd/secrets
+    # The application itself, via its Helm chart. `secrets.create=false` renders no plaintext Secret;
+    # the Secret comes from the SealedSecret above. The chart defaults already point config at the
+    # in-cluster backing services, so only the image tag is pinned (bump it to release a version).
+    - repoURL: https://github.com/ghiwet/Task-Manager-API
+      targetRevision: main
+      path: helm/task-manager
+      helm:
+        valuesObject:
+          image:
+            tag: "1.0.1"
+          secrets:
+            create: false
   destination:
     server: https://kubernetes.default.svc
     namespace: task-manager           # same namespace as the backing services (created by Terraform)

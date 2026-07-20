@@ -45,7 +45,7 @@ flowchart LR
 - **Multi-tenancy & security** — tenant isolation via PostgreSQL **row-level security**, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation
 - **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
 - **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary)
-- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the platform on kind, **Argo CD** delivering the app via GitOps, Testcontainers integration tests
+- **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the platform on kind, **Argo CD** delivering the app via GitOps, **Sealed Secrets** (no plaintext secrets in Git), Testcontainers integration tests
 
 ---
 
@@ -96,8 +96,9 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 │   └── application.properties
 ├── src/test                 # integration tests (Testcontainers, EmbeddedKafka)
 ├── helm/task-manager        # Helm chart
-├── terraform                # IaC: kind cluster + backing services + Argo CD
-├── argocd/applications      # Argo CD Application (GitOps delivery of the app)
+├── terraform                # IaC: kind cluster + backing services + Argo CD + Sealed Secrets
+├── argocd                   # Argo CD Applications + the encrypted SealedSecret (GitOps)
+├── sealed-secrets/tls.crt   # public cert for kubeseal (controller private key is gitignored)
 ├── keycloak/realm-export.json
 ├── Dockerfile
 ├── docker-compose.yml
@@ -279,6 +280,36 @@ kubectl -n argocd port-forward svc/argocd-server 8083:80    # then http://localh
 # user: admin — initial password:
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
 ```
+
+### 🔐 Secrets (Sealed Secrets)
+Real secrets are never committed in plaintext. In the GitOps flow the Argo CD Application sets the
+chart's `secrets.create=false` (no plaintext Secret); the app's Secret comes instead from a committed,
+**encrypted SealedSecret** (`argocd/secrets/`). Terraform installs the Sealed Secrets controller and
+seeds it a **fixed keypair** (private key gitignored, public cert committed), so committed SealedSecrets
+decrypt reproducibly even after the cluster is recreated. The app's Argo CD Application is **multi-source**
+— it syncs the SealedSecret and the chart together, with the SealedSecret in an earlier **sync-wave** so
+the controller unseals it into the app's Secret before the pods that consume it (via `envFrom`) start.
+
+```mermaid
+flowchart LR
+    KS[kubeseal + public cert] -->|encrypt| SS[SealedSecret in Git]
+    SS -->|Argo CD sync| CTRL[Sealed Secrets controller]
+    CTRL -->|unseal| SEC[K8s Secret]
+    SEC -->|envFrom| APP[task-manager app]
+```
+
+Re-seal after changing a value (offline, against the committed cert):
+```bash
+kubectl create secret generic task-manager-task-manager-secret -n task-manager \
+  --from-literal=SPRING_DATASOURCE_PASSWORD=... \
+  --from-literal=KEYCLOAK_CLIENT_SECRET=... \
+  --dry-run=client -o yaml \
+  | kubeseal --cert sealed-secrets/tls.crt --format yaml \
+  > argocd/secrets/task-manager-sealedsecret.yaml
+```
+> `sealed-secrets/tls.key` (the controller's private key) is gitignored; only the public cert is
+> committed. Clone without the key and the committed SealedSecret can't be decrypted — generate your
+> own key and re-seal.
 
 ### 🧪 Running Tests
 `./mvnw test`

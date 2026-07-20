@@ -37,8 +37,12 @@ config:
   otlpTracingEndpoint: http://tempo:4318/v1/traces
   openaiChatModel: gpt-4o-mini
 
-# Secrets. Override via --set or a private values file; never commit real secrets.
+# Secrets. `create: true` renders a plaintext Secret from the values below — throwaway local-dev
+# defaults, fine for `helm install`/the terraform-deploy branch. In the GitOps flow set
+# `create: false`: the app's Secret is provided instead by a committed, encrypted SealedSecret
+# (argocd/secrets), so no real secret is ever committed in plaintext.
 secrets:
+  create: true
   datasourcePassword: app_rls_pass
   flywayPassword: taskpass
   keycloakClientSecret: secret123
