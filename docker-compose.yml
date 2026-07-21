@@ -96,9 +96,22 @@ services:
       - "9090:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: taskmanager_alertmanager
+    restart: always
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
 
   tempo:
     image: grafana/tempo:2.10.7
@@ -135,5 +148,6 @@ volumes:
   postgres_data:
   kafka_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
   tempo_data:

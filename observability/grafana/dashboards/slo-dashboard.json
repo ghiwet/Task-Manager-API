@@ -1,0 +1,176 @@
+{
+  "uid": "task-manager-slo",
+  "title": "Task Manager — SLOs & Error Budgets",
+  "tags": ["slo", "task-manager"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Availability SLI (1h)  ·  SLO 99.5%",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * (1 - job:slo_api_errors:ratio_rate1h)" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 3,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null }, { "color": "yellow", "value": 99 }, { "color": "green", "value": 99.5 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latency SLI (1h)  ·  SLO 95% < 300ms",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * (1 - job:slo_api_latency:ratio_rate1h)" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null }, { "color": "yellow", "value": 90 }, { "color": "green", "value": 95 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "gauge",
+      "title": "Availability error budget remaining (30d)",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * (1 - ( (sum(rate(http_server_requests_seconds_count{job=\"task-manager-api\", uri=~\"/api/.*\", outcome=\"SERVER_ERROR\"}[30d])) / sum(rate(http_server_requests_seconds_count{job=\"task-manager-api\", uri=~\"/api/.*\"}[30d]))) / 0.005 ))" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 1, "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "gauge",
+      "title": "Latency error budget remaining (30d)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * (1 - ( (1 - sum(rate(http_server_requests_seconds_bucket{job=\"task-manager-api\", uri=~\"/api/.*\", uri!~\"/api/v1/assistant.*\", le=\"0.3\"}[30d])) / sum(rate(http_server_requests_seconds_count{job=\"task-manager-api\", uri=~\"/api/.*\", uri!~\"/api/v1/assistant.*\"}[30d]))) / 0.05 ))" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 1, "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null }, { "color": "yellow", "value": 25 }, { "color": "green", "value": 50 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Availability burn rate  (page ≥ 14.4x, ticket ≥ 6x)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h burn", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_errors:ratio_rate1h / 0.005" },
+        { "refId": "B", "legendFormat": "5m burn", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_errors:ratio_rate5m / 0.005" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none", "decimals": 2,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "thresholdsStyle": { "mode": "line" } },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 6 }, { "color": "red", "value": 14.4 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Latency burn rate  (page ≥ 14.4x, ticket ≥ 6x)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "1h burn", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_latency:ratio_rate1h / 0.05" },
+        { "refId": "B", "legendFormat": "5m burn", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_latency:ratio_rate5m / 0.05" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none", "decimals": 2,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "thresholdsStyle": { "mode": "line" } },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 6 }, { "color": "red", "value": 14.4 }
+          ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "API 5xx ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "5m", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_errors:ratio_rate5m" },
+        { "refId": "B", "legendFormat": "1h", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "job:slo_api_errors:ratio_rate1h" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 3, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "API request rate by outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{outcome}}", "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (outcome) (rate(http_server_requests_seconds_count{job=\"task-manager-api\", uri=~\"/api/.*\"}[5m]))" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "decimals": 2, "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      }
+    }
+  ]
+}

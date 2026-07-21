@@ -1,0 +1,41 @@
+# Routes SLO burn-rate alerts by severity. Receivers are UI-only for local dev (alerts group and
+# show in the Alertmanager UI at :9093); wire a real notifier — Slack/PagerDuty/webhook — where
+# indicated for a real environment.
+route:
+  receiver: default
+  group_by: ['alertname', 'slo']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "page"
+      receiver: pager
+      group_wait: 10s
+      repeat_interval: 1h
+    - matchers:
+        - severity = "ticket"
+      receiver: tickets
+
+receivers:
+  - name: default
+  - name: pager
+    # Real environment: page a human, e.g.
+    # slack_configs:
+    #   - api_url: <slack-webhook-url>
+    #     channel: '#alerts-page'
+    # pagerduty_configs:
+    #   - routing_key: <key>
+  - name: tickets
+    # Real environment: open a ticket, e.g. a webhook that files a Jira/GitHub issue
+    # webhook_configs:
+    #   - url: <issue-creating-webhook>
+
+# A fast-burn page for an SLO makes its slow-burn ticket redundant — suppress the ticket while the
+# page is firing.
+inhibit_rules:
+  - source_matchers:
+      - severity = "page"
+    target_matchers:
+      - severity = "ticket"
+    equal: ['slo']

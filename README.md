@@ -44,7 +44,7 @@ flowchart LR
 - **Data & search** — PostgreSQL + Flyway, **Redis cache-aside**, **Elasticsearch** full-text search, pgvector for semantic retrieval
 - **Multi-tenancy & security** — tenant isolation via PostgreSQL **row-level security**, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation
 - **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
-- **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary)
+- **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary), **SLOs with multi-burn-rate alerting** (Alertmanager)
 - **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the platform on kind, **Argo CD** delivering the app via GitOps, **Sealed Secrets** (no plaintext secrets in Git), Testcontainers integration tests
 
 ---
@@ -467,6 +467,38 @@ Metrics stay on the Prometheus pipeline; only traces go to Tempo.
 
 > Note: tracing is wired via `spring-boot-starter-opentelemetry`. The starter also brings an OTLP metrics
 > registry, so metrics are kept on the Prometheus pipeline with `management.otlp.metrics.export.enabled=false`.
+
+## 📊 SLOs & Alerting
+
+Two SLOs are defined on the API from Spring Boot's `http_server_requests` metric, with alerting on
+**error-budget burn rate** (the Google SRE approach) rather than raw error rate:
+
+| SLO | Target | Error budget |
+|-----|--------|--------------|
+| **Availability** — non-5xx API responses | 99.5% | 0.5% |
+| **Latency** — API requests < 300ms (excl. the assistant) | 95% | 5% |
+
+`observability/prometheus/rules/slo.rules.yml` holds Prometheus **recording rules** (the SLIs over
+5m/30m/1h/6h windows) and **multi-window, multi-burn-rate alerts**: a **page** on a fast burn (≥14.4×
+over 1h *and* 5m — ~2% of the 30-day budget in an hour) and a **ticket** on a slow burn (≥6× over 6h
+*and* 30m). The rules are unit-tested with `promtool test rules` (`*.test.yml`), so alert logic is
+verified without waiting for real traffic:
+
+```bash
+docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus/rules:/rules" \
+  prom/prometheus:v3.4.1 test rules /rules/slo.rules.test.yml
+```
+
+**Alertmanager** (`:9093`) routes by `severity` (page/ticket) with an inhibit rule so a fast-burn page
+suppresses the same SLO's slow-burn ticket; receivers are UI-only locally (wire Slack/PagerDuty for a
+real environment). A provisioned **Grafana SLO dashboard** ("Task Manager — SLOs & Error Budgets") shows
+the SLIs, 30-day error budget remaining, and burn-rate panels with the 6×/14.4× thresholds drawn in.
+
+```bash
+docker compose up -d prometheus alertmanager grafana
+# Prometheus alerts → http://localhost:9090/alerts   ·   Alertmanager → http://localhost:9093
+# Grafana SLO dashboard → http://localhost:3000  (admin/admin)
+```
 
 ## 🤖 AI Task Assistant (RAG)
 

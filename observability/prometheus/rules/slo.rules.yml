@@ -1,0 +1,117 @@
+# SLOs for the Task Manager API, from Spring Boot's http_server_requests metric.
+#
+#   Availability SLO: 99.5% of API requests are non-5xx      → error budget 0.5% (0.005)
+#   Latency SLO:      95% of API requests finish < 300ms      → error budget 5%  (0.05)
+#                     (excludes /api/v1/assistant, whose RAG call is deliberately slow)
+#
+# Alerts fire on error-budget *burn rate* (Google SRE multi-window, multi-burn-rate), not on raw
+# error rate: page on a fast burn (14.4x over 1h AND 5m), ticket on a slow burn (6x over 6h AND 30m).
+groups:
+  - name: slo_sli_recording
+    interval: 15s
+    rules:
+      # ---- Availability: fraction of API requests that are 5xx (lower is better) ----
+      - record: job:slo_api_errors:ratio_rate5m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", outcome="SERVER_ERROR"}[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*"}[5m]))
+      - record: job:slo_api_errors:ratio_rate30m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", outcome="SERVER_ERROR"}[30m]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*"}[30m]))
+      - record: job:slo_api_errors:ratio_rate1h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", outcome="SERVER_ERROR"}[1h]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*"}[1h]))
+      - record: job:slo_api_errors:ratio_rate6h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", outcome="SERVER_ERROR"}[6h]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*"}[6h]))
+
+      # ---- Latency: fraction of API requests slower than 300ms (lower is better) ----
+      - record: job:slo_api_latency:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*", le="0.3"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*"}[5m]))
+          )
+      - record: job:slo_api_latency:ratio_rate30m
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*", le="0.3"}[30m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*"}[30m]))
+          )
+      - record: job:slo_api_latency:ratio_rate1h
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*", le="0.3"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*"}[1h]))
+          )
+      - record: job:slo_api_latency:ratio_rate6h
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*", le="0.3"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="task-manager-api", uri=~"/api/.*", uri!~"/api/v1/assistant.*"}[6h]))
+          )
+
+  - name: slo_burn_rate_alerts
+    rules:
+      # Availability — error budget 0.005 (99.5% SLO)
+      - alert: ApiAvailabilityErrorBudgetFastBurn
+        expr: |
+          job:slo_api_errors:ratio_rate1h > (14.4 * 0.005)
+          and
+          job:slo_api_errors:ratio_rate5m > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: page
+          slo: api-availability
+        annotations:
+          summary: "API availability budget burning fast (>=14.4x)"
+          description: "5xx ratio over 1h and 5m exceeds 14.4x the 99.5% SLO burn rate — ~2% of the 30d error budget will be gone within an hour."
+      - alert: ApiAvailabilityErrorBudgetSlowBurn
+        expr: |
+          job:slo_api_errors:ratio_rate6h > (6 * 0.005)
+          and
+          job:slo_api_errors:ratio_rate30m > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: ticket
+          slo: api-availability
+        annotations:
+          summary: "API availability budget burning slowly (>=6x)"
+          description: "5xx ratio over 6h and 30m exceeds 6x the 99.5% SLO burn rate — the 30d error budget is being depleted."
+
+      # Latency — error budget 0.05 (95% < 300ms SLO)
+      - alert: ApiLatencyErrorBudgetFastBurn
+        expr: |
+          job:slo_api_latency:ratio_rate1h > (14.4 * 0.05)
+          and
+          job:slo_api_latency:ratio_rate5m > (14.4 * 0.05)
+        for: 2m
+        labels:
+          severity: page
+          slo: api-latency
+        annotations:
+          summary: "API latency budget burning fast (>=14.4x)"
+          description: "Share of API requests slower than 300ms over 1h and 5m exceeds 14.4x the 95% SLO burn rate."
+      - alert: ApiLatencyErrorBudgetSlowBurn
+        expr: |
+          job:slo_api_latency:ratio_rate6h > (6 * 0.05)
+          and
+          job:slo_api_latency:ratio_rate30m > (6 * 0.05)
+        for: 15m
+        labels:
+          severity: ticket
+          slo: api-latency
+        annotations:
+          summary: "API latency budget burning slowly (>=6x)"
+          description: "Share of API requests slower than 300ms over 6h and 30m exceeds 6x the 95% SLO burn rate."

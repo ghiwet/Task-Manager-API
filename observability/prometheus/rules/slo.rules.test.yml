@@ -1,0 +1,43 @@
+# Unit tests for the SLO burn-rate rules (`promtool test rules`). Synthetic counters drive the SLIs
+# past the fast-burn threshold and assert the page alerts fire — no live traffic or hour-long waits.
+rule_files:
+  - slo.rules.yml
+evaluation_interval: 1m
+tests:
+  # Availability: ~33% of API requests are 5xx (100 ok/min, 50 err/min) — well past the 14.4x
+  # fast-burn threshold (7.2% for the 99.5% SLO) → page.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="task-manager-api", uri="/api/v1/tasks", outcome="SUCCESS"}'
+        values: '0+100x200'
+      - series: 'http_server_requests_seconds_count{job="task-manager-api", uri="/api/v1/tasks", outcome="SERVER_ERROR"}'
+        values: '0+50x200'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ApiAvailabilityErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: api-availability
+            exp_annotations:
+              summary: "API availability budget burning fast (>=14.4x)"
+              description: "5xx ratio over 1h and 5m exceeds 14.4x the 99.5% SLO burn rate — ~2% of the 30d error budget will be gone within an hour."
+
+  # Latency: only 10% of API requests finish < 300ms (10 fast/min, 100 total/min) → 90% "slow",
+  # past the 14.4x fast-burn threshold (72% for the 95% SLO) → page.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="task-manager-api", uri="/api/v1/tasks", le="0.3"}'
+        values: '0+10x200'
+      - series: 'http_server_requests_seconds_count{job="task-manager-api", uri="/api/v1/tasks"}'
+        values: '0+100x200'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ApiLatencyErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              slo: api-latency
+            exp_annotations:
+              summary: "API latency budget burning fast (>=14.4x)"
+              description: "Share of API requests slower than 300ms over 1h and 5m exceeds 14.4x the 95% SLO burn rate."
