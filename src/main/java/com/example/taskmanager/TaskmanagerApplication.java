@@ -8,6 +8,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Set;
@@ -22,24 +23,27 @@ public class TaskmanagerApplication {
 	@Bean
 	CommandLineRunner init(AppUserRepository repository, PasswordEncoder encoder) {
 		return args -> {
-			if (repository.findByUsername("user").isEmpty()) {
-				AppUser user = new AppUser();
-				user.setUsername("user");
-				user.setPassword(encoder.encode("password"));
-				user.setRoles(Set.of(Role.ROLE_USER));
-				user.setTenantId(TenantContext.getTenantId());
-				repository.save(user);
-			}
-
-			if (repository.findByUsername("admin").isEmpty()) {
-				AppUser admin = new AppUser();
-				admin.setUsername("admin");
-				admin.setPassword(encoder.encode("adminpass"));
-				admin.setRoles(Set.of(Role.ROLE_USER, Role.ROLE_ADMIN));
-				admin.setTenantId(TenantContext.getTenantId());
-				repository.save(admin);
-			}
+			seedUser(repository, "user", encoder.encode("password"), Set.of(Role.ROLE_USER));
+			seedUser(repository, "admin", encoder.encode("adminpass"), Set.of(Role.ROLE_USER, Role.ROLE_ADMIN));
 		};
 	}
 
+	// Idempotent dev-user seeding. The users table is RLS-protected, so at startup (no tenant bound)
+	// findByUsername cannot see rows seeded under a different tenant — but username is globally unique,
+	// so a blind insert would crash. Catch the duplicate and move on.
+	private static void seedUser(AppUserRepository repository, String username, String encodedPassword, Set<Role> roles) {
+		if (repository.findByUsername(username).isPresent()) {
+			return;
+		}
+		try {
+			AppUser user = new AppUser();
+			user.setUsername(username);
+			user.setPassword(encodedPassword);
+			user.setRoles(roles);
+			user.setTenantId(TenantContext.getTenantId());
+			repository.save(user);
+		} catch (DataIntegrityViolationException e) {
+			// Already present (RLS may hide it from the current tenant context) — fine.
+		}
+	}
 }
