@@ -119,6 +119,27 @@ class TaskSearchTest extends AbstractIntegrationTest {
         });
     }
 
+    @Test
+    void adminSearchReturnsAllOwnersInTenant() {
+        repository.save(doc("50", "carol", "tenant-a", "buy milk urgently", "carol's task"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            // owner=null → across all owners in tenant-a (alice's id 1 + carol's id 50)...
+            TaskSearchResponse resp = searchService.search("milk", null, null, "tenant-a", PageRequest.of(0, 10));
+            assertThat(resp.results()).extracting(TaskSearchResult::id).contains(1L, 50L);
+            // ...but still tenant-scoped: bob's tenant-b "buy milk" (id 3) is excluded.
+            assertThat(resp.results()).extracting(TaskSearchResult::id).doesNotContain(3L);
+        });
+    }
+
+    @Test
+    void searchAllEndpointRequiresAdmin() {
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/tasks/search/all").param("q", "milk")
+                                .with(jwt().jwt(j -> j.subject("alice").claim("tenant_id", "tenant-a"))
+                                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .andExpect(status().isForbidden()));
+    }
+
     private static TaskDocument doc(String id, String owner, String tenant, String title, String description) {
         return TaskDocument.builder()
                 .id(id).owner(owner).tenantId(tenant).title(title).description(description).completed(false).build();

@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createTask, deleteTask, listTasks, searchTasks, updateTask } from '../api/tasks.ts';
+import { createTask, deleteTask, listAllTasks, listTasks, searchAllTasks, searchTasks, updateTask } from '../api/tasks.ts';
 import type { TaskCreate } from '../types.ts';
 
 const TASKS_KEY = ['tasks'] as const;
 
 export function useTasks() {
   return useQuery({ queryKey: TASKS_KEY, queryFn: () => listTasks(0, 50) });
+}
+
+export function useAllTasks() {
+  return useQuery({ queryKey: ['tasks', 'all'], queryFn: () => listAllTasks(0, 50) });
 }
 
 export function useCreateTask() {
@@ -36,6 +40,14 @@ export function useSearchTasks(q: string) {
   return useQuery({
     queryKey: ['tasks', 'search', q],
     queryFn: () => searchTasks(q),
+    enabled: q.trim().length > 0,
+  });
+}
+
+export function useSearchAllTasks(q: string) {
+  return useQuery({
+    queryKey: ['tasks', 'search-all', q],
+    queryFn: () => searchAllTasks(q),
     enabled: q.trim().length > 0,
   });
 }

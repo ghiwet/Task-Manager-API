@@ -1,9 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useAuth } from 'react-oidc-context';
 import type { Task } from '../types.ts';
+import { hasAdminRole } from '../auth/roles.ts';
 import { useCreateTask, useDeleteTask, useSearchTasks, useTasks, useUpdateTask } from './hooks.ts';
 import { TaskItem } from './TaskItem.tsx';
+import { AdminTasks } from './AdminTasks.tsx';
 
 export function TasksView() {
+  const isAdmin = hasAdminRole(useAuth().user?.access_token);
+  const [adminAll, setAdminAll] = useState(false);
   const tasks = useTasks();
   const createMut = useCreateTask();
   const updateMut = useUpdateTask();
@@ -50,6 +55,16 @@ export function TasksView() {
 
   return (
     <section className="tasks">
+      {isAdmin && (
+        <button type="button" className="admin-toggle" onClick={() => setAdminAll((v) => !v)}>
+          {adminAll ? '← My tasks' : 'All tasks (admin)'}
+        </button>
+      )}
+
+      {adminAll ? (
+        <AdminTasks />
+      ) : (
+        <>
       <form className="task-form" onSubmit={onCreate}>
         <input
           value={title}
@@ -107,6 +122,8 @@ export function TasksView() {
           </ul>
           {tasks.data?.content.length === 0 && <p className="muted">No tasks yet — add one above.</p>}
         </div>
+      )}
+        </>
       )}
     </section>
   );

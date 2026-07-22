@@ -89,6 +89,13 @@ public class TaskService {
         );
     }
 
+    // Every task the caller's tenant can see (RLS-scoped), regardless of owner — for admins.
+    public Page<TaskDto> findAllTasks(Pageable pageable) {
+        return Timer.builder("task.operation.duration").tag("operation", "findAllAdmin").register(meterRegistry).record(() ->
+                taskRepository.findAll(pageable).map(this::toDto)
+        );
+    }
+
     @Cacheable(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
     public TaskDto findTask(Long id, String owner) {
         return Timer.builder("task.operation.duration").tag("operation", "findOne").register(meterRegistry).record(() -> {

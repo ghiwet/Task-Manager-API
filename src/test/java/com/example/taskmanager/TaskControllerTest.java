@@ -237,4 +237,31 @@ class TaskControllerTest extends AbstractIntegrationTest {
                         .content(jsonMapper.writeValueAsString(blank)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @Order(14)
+    void testAdminCanListAllTasksAcrossOwners() throws Exception {
+        TaskCreateDto dto = new TaskCreateDto("Owned by user1", "desc", false);
+        mockMvc.perform(post("/api/v1/tasks")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(dto)))
+                .andExpect(status().isCreated());
+
+        // Admin (a different subject) sees user1's task via /all.
+        mockMvc.perform(get("/api/v1/tasks/all")
+                        .with(jwt().jwt(j -> j.subject("admin")).authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.owner=='user1')].id").exists());
+    }
+
+    @Test
+    @Order(15)
+    void testNonAdminForbiddenFromListAll() throws Exception {
+        // Reaches /all (not findTask/{id}); a non-admin is rejected by @PreAuthorize with 403.
+        mockMvc.perform(get("/api/v1/tasks/all")
+                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isForbidden());
+    }
 }

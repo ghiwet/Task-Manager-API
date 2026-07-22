@@ -5,6 +5,11 @@ export function listTasks(page = 0, size = 20): Promise<Page<Task>> {
   return apiFetch<Page<Task>>(`/api/v1/tasks?page=${page}&size=${size}`);
 }
 
+// Admin only: every task in the tenant, any owner.
+export function listAllTasks(page = 0, size = 50): Promise<Page<Task>> {
+  return apiFetch<Page<Task>>(`/api/v1/tasks/all?page=${page}&size=${size}`);
+}
+
 export function createTask(task: TaskCreate): Promise<Task> {
   return apiFetch<Task>('/api/v1/tasks', {
     method: 'POST',
@@ -25,4 +30,9 @@ export function deleteTask(id: number): Promise<void> {
 
 export function searchTasks(q: string): Promise<TaskSearchResponse> {
   return apiFetch<TaskSearchResponse>(`/api/v1/tasks/search?q=${encodeURIComponent(q)}`);
+}
+
+// Admin only: search across all owners in the tenant.
+export function searchAllTasks(q: string): Promise<TaskSearchResponse> {
+  return apiFetch<TaskSearchResponse>(`/api/v1/tasks/search/all?q=${encodeURIComponent(q)}`);
 }

@@ -118,6 +118,22 @@ input {
   padding: 0;
 }
 
+.admin-toggle {
+  margin-bottom: 1rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.admin-heading {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+
+.task-owner {
+  font-size: 0.85rem;
+}
+
 em {
   font-style: normal;
   font-weight: 600;

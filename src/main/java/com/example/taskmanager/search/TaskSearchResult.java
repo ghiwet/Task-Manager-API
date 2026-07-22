@@ -8,5 +8,6 @@ public record TaskSearchResult(
         String title,
         String description,
         boolean completed,
+        String owner,
         List<String> highlights) {
 }

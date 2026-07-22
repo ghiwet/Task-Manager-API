@@ -41,7 +41,11 @@ public class TaskSearchService {
     public TaskSearchResponse search(String query, Boolean completed, String owner, String tenantId, Pageable pageable) {
         // Exact-match filters use the .keyword sub-field; full-text uses the analyzed text fields.
         List<Query> filters = new ArrayList<>();
-        filters.add(TermQuery.of(t -> t.field("owner.keyword").value(owner))._toQuery());
+        // Owner filter is skipped for a null owner (admin all-tenant search); the tenant filter always
+        // scopes the result set, so this never crosses tenants.
+        if (owner != null && !owner.isBlank()) {
+            filters.add(TermQuery.of(t -> t.field("owner.keyword").value(owner))._toQuery());
+        }
         if (tenantId != null && !tenantId.isBlank()) {
             filters.add(TermQuery.of(t -> t.field("tenantId.keyword").value(tenantId))._toQuery());
         }
@@ -78,6 +82,6 @@ public class TaskSearchService {
     private TaskSearchResult toResult(SearchHit<TaskDocument> hit) {
         TaskDocument doc = hit.getContent();
         List<String> highlights = hit.getHighlightFields().values().stream().flatMap(List::stream).toList();
-        return new TaskSearchResult(Long.valueOf(doc.getId()), doc.getTitle(), doc.getDescription(), doc.isCompleted(), highlights);
+        return new TaskSearchResult(Long.valueOf(doc.getId()), doc.getTitle(), doc.getDescription(), doc.isCompleted(), doc.getOwner(), highlights);
     }
 }

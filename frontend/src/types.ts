@@ -31,6 +31,7 @@ export interface TaskSearchResult {
   title: string;
   description: string | null;
   completed: boolean;
+  owner: string;
   highlights: string[];
 }
 

@@ -3,6 +3,7 @@ package com.example.taskmanager.search;
 import com.example.taskmanager.tenant.TenantContext;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,5 +28,16 @@ public class TaskSearchController {
             @PageableDefault(size = 20) Pageable pageable,
             Authentication authentication) {
         return searchService.search(q, completed, authentication.getName(), TenantContext.getTenantId(), pageable);
+    }
+
+    // GET /api/v1/tasks/search/all?q=... — admin search across all owners in the tenant (owner filter
+    // dropped; still tenant-scoped).
+    @GetMapping("/search/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public TaskSearchResponse searchAll(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "completed", required = false) Boolean completed,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return searchService.search(q, completed, null, TenantContext.getTenantId(), pageable);
     }
 }

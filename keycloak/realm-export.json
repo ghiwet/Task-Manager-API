@@ -105,6 +105,24 @@
           }
         ],
         "realmRoles": ["USER", "ADMIN"]
+      },
+      {
+        "username": "user2",
+        "firstName": "user2",
+        "lastName": "test",
+        "email": "user2@gmail.com",
+        "enabled": true,
+        "attributes": {
+          "tenant_id": ["tenant-b"]
+        },
+        "credentials": [
+          {
+            "type": "password",
+            "value": "userpass",
+            "temporary": false
+          }
+        ],
+        "realmRoles": ["USER"]
       }
     ]
   }

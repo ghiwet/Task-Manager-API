@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,6 +47,16 @@ public class TaskController {
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication) {
         Page<TaskDto> taskDtos = taskService.findTasks(authentication.getName(), pageable);
+        return ResponseEntity.ok(taskDtos);
+    }
+
+    // Admin view of every task in the tenant (any owner), so an admin can find and delete others'
+    // tasks. Still RLS-scoped to the admin's own tenant — never crosses the tenant boundary.
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<TaskDto>> findAllTasks(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<TaskDto> taskDtos = taskService.findAllTasks(pageable);
         return ResponseEntity.ok(taskDtos);
     }
 
