@@ -104,6 +104,21 @@ class TaskSearchTest extends AbstractIntegrationTest {
                         .andExpect(jsonPath("$.results[0].id").value(1)));
     }
 
+    @Test
+    void highlightsAreHtmlEscaped() {
+        // A task whose text contains HTML must come back escaped in the highlight, so the SPA can render
+        // it without executing injected markup — only the <em> match tags stay live.
+        repository.save(doc("99", "eve", "tenant-x", "<img src=x onerror=alert(1)> report", "n/a"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            TaskSearchResponse resp = searchService.search("report", null, "eve", "tenant-x", PageRequest.of(0, 10));
+            assertThat(resp.results()).hasSize(1);
+            String hl = resp.results().get(0).highlights().get(0);
+            assertThat(hl).contains("<em>report</em>");
+            assertThat(hl).contains("&lt;img");
+            assertThat(hl).doesNotContain("<img");
+        });
+    }
+
     private static TaskDocument doc(String id, String owner, String tenant, String title, String description) {
         return TaskDocument.builder()
                 .id(id).owner(owner).tenantId(tenant).title(title).description(description).completed(false).build();

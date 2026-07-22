@@ -15,6 +15,7 @@ import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.HighlightQuery;
 import org.springframework.data.elasticsearch.core.query.highlight.Highlight;
 import org.springframework.data.elasticsearch.core.query.highlight.HighlightField;
+import org.springframework.data.elasticsearch.core.query.highlight.HighlightParameters;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -54,7 +55,10 @@ public class TaskSearchService {
 
         Query boolQuery = BoolQuery.of(b -> b.must(matcher).filter(filters))._toQuery();
 
-        Highlight highlight = new Highlight(List.of(new HighlightField("title"), new HighlightField("description")));
+        // encoder=html so Elasticsearch HTML-escapes the task text; only the <em> match tags stay live,
+        // making the highlight safe to render as HTML on the client.
+        HighlightParameters params = HighlightParameters.builder().withEncoder("html").build();
+        Highlight highlight = new Highlight(params, List.of(new HighlightField("title"), new HighlightField("description")));
         NativeQuery nativeQuery = NativeQuery.builder()
                 .withQuery(boolQuery)
                 .withPageable(pageable)

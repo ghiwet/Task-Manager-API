@@ -7,7 +7,7 @@
 
 > A production-shaped, event-driven task API — multi-tenant, observable, AI-enabled, and deployable from Docker to Kubernetes.
 
-A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, Terraform, and Argo CD (GitOps).
+A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, Terraform, and Argo CD (GitOps) — with a thin React (Vite/TS) SPA client.
 
 ## 🗺️ Architecture
 
@@ -46,6 +46,7 @@ flowchart LR
 - **AI** — **RAG assistant** over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)
 - **Observability** — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary), **SLOs with multi-burn-rate alerting** (Alertmanager)
 - **Delivery** — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), **layered security scanning** (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), **Helm** chart, **Terraform** provisioning the platform on kind, **Argo CD** delivering the app via GitOps, **Sealed Secrets** (no plaintext secrets in Git), Testcontainers integration tests
+- **Frontend** — a thin **React (Vite + TypeScript)** SPA: Keycloak **OIDC + PKCE** login, TanStack Query, task CRUD + search over the typed API
 
 ---
 
@@ -95,6 +96,7 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 │   ├── db/migrations        # Flyway SQL scripts
 │   └── application.properties
 ├── src/test                 # integration tests (Testcontainers, EmbeddedKafka)
+├── frontend                 # React (Vite + TS) SPA — a thin typed client over the API
 ├── helm/task-manager        # Helm chart
 ├── terraform                # IaC: kind cluster + backing services + Argo CD + Sealed Secrets
 ├── argocd                   # Argo CD Applications + the encrypted SealedSecret (GitOps)
@@ -563,6 +565,27 @@ OutboxRelay  (@Scheduled)  claim unpublished rows (FOR UPDATE SKIP LOCKED) → s
   (embedding upsert/delete by deterministic id), so that's safe.
 - Published rows are pruned by a scheduled cleanup; `outbox_published_total` / `outbox_publish_failed_total`
   are exposed to Prometheus.
+
+## 🖥️ Frontend (React)
+
+A thin **React (Vite + TypeScript)** SPA in `frontend/` — a typed client over the API, not a separate
+product. It authenticates against Keycloak with **Authorization Code + PKCE** (public `taskmanager-spa`
+client) and calls the JWT-protected API cross-origin (CORS). Tasks are fetched/mutated with **TanStack
+Query**; features: sign-in/out, list, create, complete-toggle, delete, and full-text search with
+highlighting.
+
+```bash
+cd frontend
+cp .env.example .env.local          # API base + Keycloak authority/client id
+npm install
+npm run dev                          # http://localhost:5173
+```
+Requires the backing services (`docker compose up -d`) and the app (`./mvnw spring-boot:run`) running, so
+Keycloak (`:8082`) and the API (`:8080`) are reachable. The access token is injected as a Bearer header;
+the SPA's tokens carry the `tenant_id` claim, so RLS scopes results to the signed-in user's tenant.
+
+> Deliberately thin — it demonstrates React/TS + OIDC-PKCE against a secured API, not a frontend
+> showcase. The backend is the star.
 
 ## 🔗 API Endpoints
 ### 🔨 Task Endpoints
