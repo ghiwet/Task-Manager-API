@@ -140,6 +140,18 @@ class TaskSearchTest extends AbstractIntegrationTest {
                         .andExpect(status().isForbidden()));
     }
 
+    @Test
+    void prefixMatchFindsTasksSharingAStem() {
+        repository.saveAll(List.of(
+                doc("60", "dave", "tenant-c", "task1", "first"),
+                doc("61", "dave", "tenant-c", "task2", "second")));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            // "task" is a prefix of the tokens "task1"/"task2" — bool_prefix matches both.
+            TaskSearchResponse resp = searchService.search("task", null, "dave", "tenant-c", PageRequest.of(0, 10));
+            assertThat(resp.results()).extracting(TaskSearchResult::id).containsExactlyInAnyOrder(60L, 61L);
+        });
+    }
+
     private static TaskDocument doc(String id, String owner, String tenant, String title, String description) {
         return TaskDocument.builder()
                 .id(id).owner(owner).tenantId(tenant).title(title).description(description).completed(false).build();

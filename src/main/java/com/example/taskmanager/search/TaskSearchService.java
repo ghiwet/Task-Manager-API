@@ -5,6 +5,7 @@ import co.elastic.clients.elasticsearch._types.query_dsl.MatchAllQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
@@ -41,8 +42,7 @@ public class TaskSearchService {
     public TaskSearchResponse search(String query, Boolean completed, String owner, String tenantId, Pageable pageable) {
         // Exact-match filters use the .keyword sub-field; full-text uses the analyzed text fields.
         List<Query> filters = new ArrayList<>();
-        // Owner filter is skipped for a null owner (admin all-tenant search); the tenant filter always
-        // scopes the result set, so this never crosses tenants.
+        // Skip the owner filter when owner is null (admin all-tenant search); the tenant filter still scopes it.
         if (owner != null && !owner.isBlank()) {
             filters.add(TermQuery.of(t -> t.field("owner.keyword").value(owner))._toQuery());
         }
@@ -53,14 +53,14 @@ public class TaskSearchService {
             filters.add(TermQuery.of(t -> t.field("completed").value(completed))._toQuery());
         }
 
+        // bool_prefix: the last term matches as a prefix, so "task" finds "task1"/"task2" (search-as-you-type).
         Query matcher = (query == null || query.isBlank())
                 ? MatchAllQuery.of(m -> m)._toQuery()
-                : MultiMatchQuery.of(m -> m.query(query).fields("title", "description"))._toQuery();
+                : MultiMatchQuery.of(m -> m.query(query).fields("title", "description").type(TextQueryType.BoolPrefix))._toQuery();
 
         Query boolQuery = BoolQuery.of(b -> b.must(matcher).filter(filters))._toQuery();
 
-        // encoder=html so Elasticsearch HTML-escapes the task text; only the <em> match tags stay live,
-        // making the highlight safe to render as HTML on the client.
+        // encoder=html so ES escapes the task text; only the <em> match tags stay live, safe to render on the client.
         HighlightParameters params = HighlightParameters.builder().withEncoder("html").build();
         Highlight highlight = new Highlight(params, List.of(new HighlightField("title"), new HighlightField("description")));
         NativeQuery nativeQuery = NativeQuery.builder()
