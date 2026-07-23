@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Task Manager — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A thin **React (Vite + TypeScript)** SPA: a typed client over the [Task Manager API](../README.md), not a
+separate product. It logs in against Keycloak with **Authorization Code + PKCE** and calls the
+JWT-protected API cross-origin.
 
-Currently, two official plugins are available:
+- **Auth** — `react-oidc-context` / `oidc-client-ts` against the public `taskmanager-spa` Keycloak client
+- **Data** — [TanStack Query](https://tanstack.com/query); a typed API client (`src/api`) injects the Bearer token
+- **Features** — sign-in/out, task list, create, complete-toggle, delete, prefix full-text search with
+  highlighting, and (for admins) an "All tasks" view over the whole tenant
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+cp .env.example .env.local     # API base + Keycloak authority/client id (defaults are fine locally)
+npm install
+npm run dev                    # http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Needs the backing services (`docker compose up -d`) and the API (`./mvnw spring-boot:run`) up, so Keycloak
+(`:8082`) and the API (`:8080`) are reachable. Sign in with a dev user (e.g. `user1` / `userpass`, or
+`admin1` / `adminpass` for the admin view).
+
+## Scripts
+
+- `npm run dev` — dev server (HMR)
+- `npm run build` — type-check + production build (`tsc -b && vite build`)
+- `npm run lint` — [oxlint](https://oxc.rs)
+- `npm run preview` — serve the production build
+
+## Layout
+
+```
+src/
+  api/      typed API client + task endpoints
+  auth/     OIDC config + role helper
+  tasks/    hooks (TanStack Query) + views (personal + admin)
+  App.tsx   auth gate + layout
+```

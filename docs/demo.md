@@ -4,7 +4,7 @@ A real walkthrough of the API via `curl` — actual requests and responses captu
 running stack. Start the backing services with `docker compose up -d` and the app with
 `./mvnw spring-boot:run`, then follow along.
 
-> Owner IDs below are the JWT subject (the Keycloak user's UUID); they're shown truncated for readability.
+> `owner` below is the Keycloak username (the `preferred_username` claim), so tasks are attributed to `user1`.
 
 ## 1. Get an access token (Keycloak)
 
@@ -27,7 +27,7 @@ curl -s -X POST http://localhost:8080/api/v1/tasks \
   "title": "Prepare Q3 report",
   "description": "draft the quarterly financials",
   "completed": false,
-  "owner": "9050e08b…",
+  "owner": "user1",
   "createAt": "2026-07-05T10:17:14.47",
   "updatedAt": "2026-07-05T10:17:14.47",
   "version": 0

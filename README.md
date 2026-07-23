@@ -15,11 +15,13 @@ Request path and backing services:
 
 ```mermaid
 flowchart LR
-    Client([Client / Swagger UI]) -->|JWT| API[Task Manager API]
+    SPA([React SPA]) -->|OIDC + PKCE| KC[Keycloak]
+    SPA -->|JWT| API[Task Manager API]
+    CLI([Swagger UI / curl]) -->|JWT| API
+    API -->|validate JWT| KC
     API -->|read-write, RLS| PG[(PostgreSQL + pgvector)]
     API -->|cache-aside, rate limit| REDIS[(Redis)]
     API -->|full-text search| ES[(Elasticsearch)]
-    API -->|OAuth2 / JWT| KC[Keycloak]
     API -->|chat| OpenAI[(OpenAI)]
     API -.->|metrics, traces| OBS[Prometheus, Grafana, Tempo]
 ```
@@ -572,7 +574,8 @@ A thin **React (Vite + TypeScript)** SPA in `frontend/` — a typed client over 
 product. It authenticates against Keycloak with **Authorization Code + PKCE** (public `taskmanager-spa`
 client) and calls the JWT-protected API cross-origin (CORS). Tasks are fetched/mutated with **TanStack
 Query**; features: sign-in/out, list, create, complete-toggle, delete, and full-text search with
-highlighting.
+highlighting. Admins get an **"All tasks"** view — every task in the tenant (with owner) plus
+tenant-wide search — to find and delete others' tasks.
 
 ```bash
 cd frontend
@@ -599,13 +602,25 @@ GET    /api/v1/tasks/{id}      — get own task by ID
 PUT    /api/v1/tasks/{id}      — update own task
 
 DELETE /api/v1/tasks/{id}      — delete own task (ROLE_USER) or any task in the tenant (ROLE_ADMIN)
+
+GET    /api/v1/tasks/search    — full-text search own tasks (?q=, prefix-matched, highlighted)
+
+GET    /api/v1/tasks/all       — list every task in the tenant (ROLE_ADMIN)
+
+GET    /api/v1/tasks/search/all — search every task in the tenant (ROLE_ADMIN)
 ```
 
 ### 👤 User Endpoints
 ```
-POST /api/v1/users/register — register user (validated username + password)
+POST   /api/v1/users/register    — register user (validated username + password)
 
-GET /api/v1/users/me — current user info (secured)
+GET    /api/v1/users/me          — current user info (secured)
+
+GET    /api/v1/users             — list users (ROLE_ADMIN)
+
+PUT    /api/v1/users/{username}  — update password (own, or any as ROLE_ADMIN)
+
+DELETE /api/v1/users/{username}  — delete user (ROLE_ADMIN)
 ```
 
 ### 🤖 Assistant Endpoint
