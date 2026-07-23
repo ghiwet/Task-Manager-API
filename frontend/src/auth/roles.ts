@@ -1,5 +1,4 @@
-// Keycloak puts realm roles in `realm_access.roles` on the access token, so decode it to tell whether
-// the signed-in user is an admin (the id-token profile doesn't carry them).
+// Realm roles live in realm_access.roles on the access token (not the id-token profile), so decode it.
 function decodePayload(token: string): Record<string, unknown> | null {
   try {
     const payload = token.split('.')[1];

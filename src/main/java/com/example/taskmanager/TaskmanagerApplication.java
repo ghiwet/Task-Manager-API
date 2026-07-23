@@ -28,9 +28,8 @@ public class TaskmanagerApplication {
 		};
 	}
 
-	// Idempotent dev-user seeding. The users table is RLS-protected, so at startup (no tenant bound)
-	// findByUsername cannot see rows seeded under a different tenant — but username is globally unique,
-	// so a blind insert would crash. Catch the duplicate and move on.
+	// Idempotent dev-user seeding. users is RLS-protected, so at startup (no tenant) findByUsername can't
+	// see rows from another tenant — but username is globally unique, so a blind insert crashes. Catch it.
 	private static void seedUser(AppUserRepository repository, String username, String encodedPassword, Set<Role> roles) {
 		if (repository.findByUsername(username).isPresent()) {
 			return;

@@ -89,8 +89,7 @@ public class WebSecurityConfig {
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        // Use the Keycloak username as the principal (and thus the task owner) instead of the opaque
-        // `sub` UUID, so owners are human-readable.
+        // Principal is the Keycloak username (so the task owner is too), not the opaque sub UUID.
         converter.setPrincipalClaimName("preferred_username");
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
             // A valid token may carry no realm roles, so realm_access (or its roles entry) can be

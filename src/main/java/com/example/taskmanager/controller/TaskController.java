@@ -50,8 +50,8 @@ public class TaskController {
         return ResponseEntity.ok(taskDtos);
     }
 
-    // Admin view of every task in the tenant (any owner), so an admin can find and delete others'
-    // tasks. Still RLS-scoped to the admin's own tenant — never crosses the tenant boundary.
+    // Admin view of all tasks in the tenant (any owner) so an admin can find others' tasks to delete.
+    // Still RLS-scoped to the admin's tenant.
     @GetMapping("/all")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<TaskDto>> findAllTasks(

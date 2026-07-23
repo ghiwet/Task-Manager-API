@@ -57,8 +57,7 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }
 
-    // @PreAuthorize denials throw during method invocation, so they'd otherwise hit the catch-all as a
-    // 500 instead of the security layer's 403.
+    // @PreAuthorize denials throw inside the method, so the catch-all would make them 500s, not 403s.
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
         meterRegistry.counter("http.errors.total", "type", "AccessDeniedException", "status", "403").increment();
