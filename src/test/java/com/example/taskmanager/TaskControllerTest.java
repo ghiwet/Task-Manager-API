@@ -57,7 +57,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         TaskCreateDto taskCreateDto = new TaskCreateDto("Test Title", "Test Description", true);
 
         mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isCreated())
@@ -71,7 +71,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         TaskCreateDto createDto = new TaskCreateDto("Fetch Title", "Fetch Description", false);
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(createDto)))
                 .andExpect(status().isCreated())
@@ -81,7 +81,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         id = createdTask.getId();
 
         MvcResult result = mockMvc.perform(get("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -99,7 +99,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
 
         MvcResult result = mockMvc
                 .perform(put("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isOk())
@@ -115,7 +115,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     @Order(4)
     void testGetTaskByDifferentUserReturnsNotFound() throws Exception {
         mockMvc.perform(get("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
 
@@ -125,7 +125,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         TaskCreateDto taskCreateDto = new TaskCreateDto("Hacked Title", "Hacked", false);
 
         mockMvc.perform(put("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(taskCreateDto)))
                 .andExpect(status().isNotFound());
@@ -135,7 +135,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     @Order(6)
     void testDeleteTaskByDifferentUserReturnsNotFound() throws Exception {
         mockMvc.perform(delete("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
 
@@ -143,7 +143,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     @Order(7)
     void testDeleteOwnTask() throws Exception {
         mockMvc.perform(delete("/api/v1/tasks/" + id)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNoContent());
     }
 
@@ -152,7 +152,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     void testDeleteTaskByAdmin() throws Exception {
         TaskCreateDto dto = new TaskCreateDto("Admin Delete Target", "Desc", false);
         MvcResult result = mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(dto)))
                 .andExpect(status().isCreated())
@@ -160,7 +160,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         TaskDto created = jsonMapper.readValue(result.getResponse().getContentAsString(), TaskDto.class);
 
         mockMvc.perform(delete("/api/v1/tasks/" + created.getId())
-                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                        .with(jwt().jwt(j -> j.subject("admin").claim("preferred_username", "admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isNoContent());
     }
 
@@ -168,7 +168,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     @Order(9)
     void testGetTaskNotFound() throws Exception {
         mockMvc.perform(get("/api/v1/tasks/99999")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
 
@@ -180,7 +180,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         for (int i = 1; i <= 3; i++) {
             TaskCreateDto dto = new TaskCreateDto("Task " + i, "Desc " + i, false);
             mockMvc.perform(post("/api/v1/tasks")
-                    .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                    .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(jsonMapper.writeValueAsString(dto)));
         }
@@ -188,7 +188,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/tasks")
                         .param("page", "0")
                         .param("size", "2")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(2))
                 .andExpect(jsonPath("$.totalElements").value(3))
@@ -199,7 +199,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     @Order(11)
     void testFindTasksOnlyReturnsOwnedTasks() throws Exception {
         mockMvc.perform(get("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(0))
                 .andExpect(jsonPath("$.totalElements").value(0));
@@ -211,7 +211,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         TaskCreateDto dto = new TaskCreateDto("a".repeat(256), "Desc", false);
 
         mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(dto)))
                 .andExpect(status().isBadRequest());
@@ -222,7 +222,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     void testUpdateWithBlankTitleReturnsBadRequest() throws Exception {
         TaskCreateDto create = new TaskCreateDto("Valid Title", "Desc", false);
         MvcResult created = mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(create)))
                 .andExpect(status().isCreated())
@@ -232,7 +232,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
         // Update now validates like create: a blank title is a 400, not a persisted blank.
         TaskCreateDto blank = new TaskCreateDto("", "Desc", false);
         mockMvc.perform(put("/api/v1/tasks/" + createdId)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(blank)))
                 .andExpect(status().isBadRequest());
@@ -243,14 +243,14 @@ class TaskControllerTest extends AbstractIntegrationTest {
     void testAdminCanListAllTasksAcrossOwners() throws Exception {
         TaskCreateDto dto = new TaskCreateDto("Owned by user1", "desc", false);
         mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(dto)))
                 .andExpect(status().isCreated());
 
         // Admin (a different subject) sees user1's task via /all.
         mockMvc.perform(get("/api/v1/tasks/all")
-                        .with(jwt().jwt(j -> j.subject("admin")).authorities(
+                        .with(jwt().jwt(j -> j.subject("admin").claim("preferred_username", "admin")).authorities(
                                 new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[?(@.owner=='user1')].id").exists());
@@ -261,7 +261,7 @@ class TaskControllerTest extends AbstractIntegrationTest {
     void testNonAdminForbiddenFromListAll() throws Exception {
         // Reaches /all (not findTask/{id}); a non-admin is rejected by @PreAuthorize with 403.
         mockMvc.perform(get("/api/v1/tasks/all")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden());
     }
 }

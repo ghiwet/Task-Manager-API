@@ -67,7 +67,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
 
         MvcResult result = mockMvc.perform(post("/api/v1/users/register")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isCreated())
@@ -85,7 +85,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
 
         mockMvc.perform(post("/api/v1/users/register")
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user2)))
                 .andExpect(status().isCreated());
@@ -95,7 +95,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Order(2)
     void testGetUser() throws Exception {
         MvcResult result = mockMvc.perform(get("/api/v1/users/me")
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -114,7 +114,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     @Order(3)
     void testGetUserNotFound() throws Exception {
         mockMvc.perform(get("/api/v1/users/me")
-                        .with(jwt().jwt(j -> j.subject("user3")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(jwt().jwt(j -> j.subject("user3").claim("preferred_username", "user3")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
 
@@ -126,7 +126,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
         mockMvc
                 .perform(put("/api/v1/users/" + username)
-                        .with(jwt().jwt(j -> j.subject("user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isOk());
@@ -143,7 +143,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
         mockMvc
                 .perform(put("/api/v1/users/" + username)
-                        .with(jwt().jwt(j -> j.subject("user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("user2").claim("preferred_username", "user2")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isForbidden());
@@ -157,7 +157,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
         mockMvc
                 .perform(put("/api/v1/users/" + username)
-                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .with(jwt().jwt(j -> j.subject("admin").claim("preferred_username", "admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isOk());
@@ -168,7 +168,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
     void testDeleteUserByAdmin() throws Exception {
         mockMvc
                 .perform(delete("/api/v1/users/" + username)
-                        .with(jwt().jwt(j -> j.subject("admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .with(jwt().jwt(j -> j.subject("admin").claim("preferred_username", "admin")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNoContent());
     }
@@ -182,7 +182,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
 
         mockMvc.perform(post("/api/v1/users/register")
-                        .with(jwt().jwt(j -> j.subject("weakuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("weakuser").claim("preferred_username", "weakuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isBadRequest());
@@ -197,7 +197,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
         );
 
         mockMvc.perform(post("/api/v1/users/register")
-                        .with(jwt().jwt(j -> j.subject("ab")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("ab").claim("preferred_username", "ab")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(user)))
                 .andExpect(status().isBadRequest());
@@ -212,7 +212,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "password", "Escpass1!word"
         );
         mockMvc.perform(post("/api/v1/users/register")
-                        .with(jwt().jwt(j -> j.subject("escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("escuser").claim("preferred_username", "escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(registration)))
                 .andExpect(status().isCreated());
@@ -223,7 +223,7 @@ public class UserControllerTest extends AbstractIntegrationTest {
                 "roles", List.of("ROLE_ADMIN")
         );
         mockMvc.perform(put("/api/v1/users/escuser")
-                        .with(jwt().jwt(j -> j.subject("escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
+                        .with(jwt().jwt(j -> j.subject("escuser").claim("preferred_username", "escuser")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(escalation)))
                 .andExpect(status().isOk());

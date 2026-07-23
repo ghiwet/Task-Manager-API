@@ -95,7 +95,7 @@ class TenantIsolationTest extends AbstractIntegrationTest {
 
     private RequestPostProcessor user(String subject, String tenantId) {
         return jwt()
-                .jwt(j -> j.subject(subject).claim("tenant_id", tenantId))
+                .jwt(j -> j.subject(subject).claim("preferred_username", subject).claim("tenant_id", tenantId))
                 .authorities(new SimpleGrantedAuthority("ROLE_USER"));
     }
 

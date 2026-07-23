@@ -97,7 +97,7 @@ class TaskSearchTest extends AbstractIntegrationTest {
         // from the JWT's tenant_id claim, the owner from its subject.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 mockMvc.perform(get("/api/v1/tasks/search").param("q", "milk")
-                                .with(jwt().jwt(j -> j.subject("alice").claim("tenant_id", "tenant-a"))
+                                .with(jwt().jwt(j -> j.subject("alice").claim("preferred_username", "alice").claim("tenant_id", "tenant-a"))
                                         .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.total").value(1))
@@ -135,7 +135,7 @@ class TaskSearchTest extends AbstractIntegrationTest {
     void searchAllEndpointRequiresAdmin() {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 mockMvc.perform(get("/api/v1/tasks/search/all").param("q", "milk")
-                                .with(jwt().jwt(j -> j.subject("alice").claim("tenant_id", "tenant-a"))
+                                .with(jwt().jwt(j -> j.subject("alice").claim("preferred_username", "alice").claim("tenant_id", "tenant-a"))
                                         .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                         .andExpect(status().isForbidden()));
     }
