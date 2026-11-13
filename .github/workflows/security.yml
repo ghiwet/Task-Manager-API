@@ -10,6 +10,7 @@ jobs:
   codeql:
     name: CodeQL Static Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write
     steps:
@@ -37,9 +38,12 @@ jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write   # upload-sarif needs this to post findings to the Security tab
     # Semgrep scans source, so no Java build is needed; run in the maintained image.
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:1.185.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,44 +52,57 @@ jobs:
         run: semgrep scan --config=p/ci --sarif --output=semgrep.sarif
         continue-on-error: true
 
-      - name: Upload Semgrep report
+      - name: Upload Semgrep report (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-sarif
           path: semgrep.sarif
 
+      # Without this, the SARIF is just a downloadable artifact nobody looks at; this surfaces
+      # findings in the repo's Security > Code scanning alerts tab alongside CodeQL's.
+      - name: Upload Semgrep report (Security tab)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true
+
   dependency-check:
     name: OWASP Dependency-Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: pin @main to a released tag once verified. The NVD API rate-limits without a
-      # key, so add an NVD_API_KEY repo secret (https://nvd.nist.gov/developers/request-an-api-key)
-      # or the DB download will be very slow / time out.
+      # The NVD API rate-limits without a key, so add an NVD_API_KEY repo secret
+      # (https://nvd.nist.gov/developers/request-an-api-key) or the DB download will be very
+      # slow / time out.
       - name: Run OWASP Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@main
+        uses: dependency-check/Dependency-Check_Action@1.1.0
         with:
           project: 'java-app'
           path: './'
           format: 'HTML'
+          out: 'reports'
           args: ${{ secrets.NVD_API_KEY && format('--nvdApiKey {0}', secrets.NVD_API_KEY) || '' }}
 
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
-          path: dependency-check-report.html
+          # The action writes into `out` (default "reports"), not the repo root -- uploading the
+          # whole directory survives any report-filename changes across action versions.
+          path: reports/
 
   secret-scan:
     name: TruffleHog Secret Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - name: Run TruffleHog (filesystem scan, JSON report)
         run: |
-         docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:latest \
+         docker run --rm -v ${{ github.workspace }}:/repo ghcr.io/trufflesecurity/trufflehog:3.99.9 \
          filesystem /repo --json > trufflehog-report.json
 
       - name: Upload TruffleHog Report
@@ -97,6 +114,7 @@ jobs:
   zap-scan:
     name: OWASP ZAP Baseline Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
