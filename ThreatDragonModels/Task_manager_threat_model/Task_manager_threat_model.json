@@ -1,0 +1,29 @@
+{
+  "version": "2.6.2",
+  "release_version": "",
+  "released_at": "2026-11-13",
+  "summary": {
+    "title": "Task_manager_threat_model",
+    "owner": "Gebrehiwet",
+    "description": "A Spring Boot (Java 25) REST API showcasing a modern backend stack: OAuth2/JWT security, PostgreSQL row-level multi-tenancy, a Kafka transactional outbox, Redis rate limiting + caching, Elasticsearch full-text search, a pgvector RAG assistant, end-to-end observability (metrics + tracing), and delivery via CI/CD, Helm, Terraform, and Argo CD (GitOps) — with a thin React (Vite/TS) SPA client.\n\nHighlights\nAPI & auth — versioned REST (/api/v1), OAuth2 login (Google / GitHub / Keycloak) + JWT resource server, per-user task ownership, admin two-tier delete, pagination, Swagger UI\nEvent-driven — Kafka task events with a transactional outbox (atomic with the DB write, so none are lost) and a dead-letter topic\nData & search — PostgreSQL + Flyway, Redis cache-aside, Elasticsearch full-text search, pgvector for semantic retrieval\nMulti-tenancy & security — tenant isolation via PostgreSQL row-level security, per-user rate limiting (Redis-backed, shared across replicas), security headers + input validation\nAI — RAG assistant over your tasks (Spring AI + pgvector), wrapped with Resilience4j (circuit breaker, retry, graceful fallback)\nObservability — Micrometer → Prometheus + Grafana, OpenTelemetry tracing → Tempo (one trace per request, across the Kafka boundary), SLOs with multi-burn-rate alerting (Alertmanager)\nDelivery — CI (build + test), CD (Docker image → GHCR on version tags, gated on the test suite), layered security scanning (CodeQL, Semgrep, OWASP Dependency-Check, TruffleHog, ZAP), Helm chart, Terraform provisioning the platform on kind, Argo CD delivering the app via GitOps, Sealed Secrets (no plaintext secrets in Git), Testcontainers integration tests\nFrontend — a thin React (Vite + TypeScript) SPA: Keycloak OIDC + PKCE login, TanStack Query, task CRUD + search over the typed API\n",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [],
+    "diagrams": [
+      {
+        "id": 1,
+        "title": "New STRIDE diagram",
+        "diagramType": "STRIDE",
+        "placeholder": "New STRIDE diagram description",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.6.2",
+        "cells": [],
+        "description": "new STRIDE Diagram"
+      }
+    ],
+    "diagramTop": 2,
+    "reviewer": "",
+    "threatTop": 0
+  }
+}
