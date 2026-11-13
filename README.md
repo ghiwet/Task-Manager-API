@@ -68,7 +68,7 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 - Spring Data JPA
 - Flyway
 - PostgreSQL
-- Apache Kafka 4.3 (KRaft mode)
+- Apache Kafka 4.3 (KRaft mode, SASL/SCRAM-authenticated)
 - Swagger (springdoc-openapi)
 - Micrometer + Prometheus + Grafana
 - OpenTelemetry (Micrometer Tracing) + Grafana Tempo (distributed tracing)
@@ -99,11 +99,13 @@ AI assistant → custom metrics) — is in **[docs/demo.md](docs/demo.md)**.
 │   └── application.properties
 ├── src/test                 # integration tests (Testcontainers, EmbeddedKafka)
 ├── frontend                 # React (Vite + TS) SPA — a thin typed client over the API
-├── helm/task-manager        # Helm chart
+├── helm/task-manager        # Helm chart (app Deployment + a separate Flyway migration Job)
 ├── terraform                # IaC: kind cluster + backing services + Argo CD + Sealed Secrets
-├── argocd                   # Argo CD Applications + the encrypted SealedSecret (GitOps)
+├── argocd                   # Argo CD Applications + encrypted SealedSecrets (GitOps)
 ├── sealed-secrets/tls.crt   # public cert for kubeseal (controller private key is gitignored)
+├── ThreatDragonModels        # STRIDE threat model (OWASP Threat Dragon)
 ├── keycloak/realm-export.json
+├── kafka/kafka_server_jaas.conf   # inter-broker SASL credentials for docker-compose
 ├── Dockerfile
 ├── docker-compose.yml
 └── pom.xml
@@ -165,6 +167,9 @@ The GitHub/Google registration config lives in `application-oauth2.properties`.
 
 `docker-compose up -d`
 
+A one-shot `kafka-init` container runs first and exits 0 — it seeds Kafka's SASL credentials before the
+broker starts (see "Kafka Authentication" under Security Hardening below), so this is expected.
+
 ###  ▶️ Run Application
 `./mvnw spring-boot:run`
 
@@ -195,6 +200,12 @@ A layered security workflow (`security.yml`, manually triggered via `workflow_di
 A Helm chart lives in `helm/task-manager` — it deploys the app (pulling the GHCR image) and expects
 Postgres (with the `vector` extension), Kafka, Redis, Elasticsearch, and Keycloak to be reachable; set their addresses in
 `values.yaml` under `config.*`.
+
+Flyway runs in a **separate migration Job**, not the long-running app pod — the app never holds Flyway's
+owner-role (`taskuser`) credentials, only its own non-owner `app_rls` ones. The Job (`SPRING_PROFILES_ACTIVE=migrate`)
+is named per image tag so each release gets a fresh Job object, and an Argo CD sync-wave (`"0"`, vs the
+Deployment's `"1"`) makes the app wait for it to reach `Succeeded` before starting.
+
 ```bash
 helm install tm helm/task-manager \
   --set image.tag=1.0.1 \
@@ -291,8 +302,13 @@ chart's `secrets.create=false` (no plaintext Secret); the app's Secret comes ins
 **encrypted SealedSecret** (`argocd/secrets/`). Terraform installs the Sealed Secrets controller and
 seeds it a **fixed keypair** (private key gitignored, public cert committed), so committed SealedSecrets
 decrypt reproducibly even after the cluster is recreated. The app's Argo CD Application is **multi-source**
-— it syncs the SealedSecret and the chart together, with the SealedSecret in an earlier **sync-wave** so
-the controller unseals it into the app's Secret before the pods that consume it (via `envFrom`) start.
+— it syncs the SealedSecrets and the chart together, with the SealedSecrets in an earlier **sync-wave** so
+the controller unseals them before the resources that consume them (the app's Secret via `envFrom`, the
+migration Job's via its own `migration-secret`) start.
+
+There are **two** committed SealedSecrets, mirroring the app/migration Secret split above: one for the
+app's `app_rls`/OpenAI/Keycloak/Kafka credentials, one just for Flyway's owner-role `SPRING_FLYWAY_PASSWORD`
+— so the two are never in the same place even as encrypted blobs.
 
 ```mermaid
 flowchart LR
@@ -304,12 +320,22 @@ flowchart LR
 
 Re-seal after changing a value (offline, against the committed cert):
 ```bash
+# app secret
 kubectl create secret generic task-manager-task-manager-secret -n task-manager \
   --from-literal=SPRING_DATASOURCE_PASSWORD=... \
+  --from-literal=SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG=... \
   --from-literal=KEYCLOAK_CLIENT_SECRET=... \
+  --from-literal=OPENAI_API_KEY=... \
   --dry-run=client -o yaml \
   | kubeseal --cert sealed-secrets/tls.crt --format yaml \
   > argocd/secrets/task-manager-sealedsecret.yaml
+
+# migration secret (Flyway's owner-role password only)
+kubectl create secret generic task-manager-task-manager-migration-secret -n task-manager \
+  --from-literal=SPRING_FLYWAY_PASSWORD=... \
+  --dry-run=client -o yaml \
+  | kubeseal --cert sealed-secrets/tls.crt --format yaml \
+  > argocd/secrets/task-manager-migration-sealedsecret.yaml
 ```
 > `sealed-secrets/tls.key` (the controller's private key) is gitignored; only the public cert is
 > committed. Clone without the key and the committed SealedSecret can't be decrypted — generate your
@@ -340,6 +366,10 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 > `grafana_data` volume) so the new UIDs provision cleanly.
 
 ## 🛡️ Security Hardening
+
+> A STRIDE threat model for this system (runtime data flows + the delivery pipeline) is maintained in
+> [`ThreatDragonModels/`](ThreatDragonModels/Task_manager_threat_model/Task_manager_threat_model.json)
+> (OWASP Threat Dragon format).
 
 ### 🚦 Rate Limiting
 
@@ -379,6 +409,20 @@ stream — `TaskSearchIndexConsumer` upserts/deletes by id (no dual-write, like 
 — so search is a rebuildable derived view. Indexing and querying are **best-effort**: if Elasticsearch
 is unavailable the app still runs and search returns empty rather than erroring. This is distinct from
 the AI assistant's **semantic** search (pgvector) — keyword/faceted vs. meaning-based.
+
+### 🔑 Kafka Authentication (SASL/SCRAM)
+
+The broker requires **SASL_PLAINTEXT / SCRAM-SHA-512** in both docker-compose and the Terraform/Kubernetes
+backing-services module — a plain unauthenticated client can't produce or consume `task-events`. A one-shot
+`kafka-init` step (a compose service / a K8s init container) seeds credentials for the app, `kafka-ui`, and
+the broker's own inter-broker identity directly into the metadata log at format time
+(`kafka-storage.sh format --add-scram`, KIP-900), so there's never a window where the broker serves traffic
+unauthenticated. A `StandardAuthorizer` default-denies everyone except those principals (plus `ANONYMOUS`,
+needed only for the intra-cluster `CONTROLLER` listener, which is never exposed outside the broker's own pod).
+
+> Dev credentials (`taskmanager-app` / `taskmanager-secret`, etc.) are plaintext in `docker-compose.yml` and
+> `helm/task-manager/values.yaml`, same as the other local-dev defaults in this repo — rotate them for any
+> shared environment.
 
 ### 🔒 Security Headers
 
@@ -431,7 +475,8 @@ when unset, so a missing tenant context matches **no rows** (default deny) rathe
 
 The app connects as the least-privilege `app_rls` role (`spring.datasource.*`), while Flyway connects as the
 privileged owner (`spring.flyway.user`). The `app_rls` role, its grants, and the policies are created in the
-`V5__enable_rls.sql` migration.
+`V5__enable_rls.sql` migration. In Kubernetes these two roles' credentials are kept apart at the pod level
+too — Flyway runs in its own migration Job, not the long-running app pod (see the Helm section below).
 
 `TenantIsolationTest` connects the app as `app_rls` and proves isolation holds — including cases where the
 same owner exists in two tenants, so only RLS (not the owner filter) can block cross-tenant access.
