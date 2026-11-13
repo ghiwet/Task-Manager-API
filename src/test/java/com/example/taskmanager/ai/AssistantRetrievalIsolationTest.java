@@ -3,6 +3,8 @@ package com.example.taskmanager.ai;
 import com.example.taskmanager.TestcontainersConfig;
 import com.example.taskmanager.event.TaskEvent;
 import com.example.taskmanager.event.TaskEventType;
+import com.example.taskmanager.model.Task;
+import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.tenant.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
@@ -29,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EmbeddedKafka(partitions = 1)
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
+        // @EmbeddedKafka runs unauthenticated; override the SASL default meant for the real broker.
+        "spring.kafka.security.protocol=PLAINTEXT",
         "rate-limit.enabled=false",
         "spring.ai.model.chat=none"
 })
@@ -56,23 +60,46 @@ class AssistantRetrievalIsolationTest {
     @Autowired
     private AssistantRetriever retriever;
 
+    @Autowired
+    private TaskRepository taskRepository;
+
     @Test
     void retrievalIsScopedToTenantAndOwner() {
-        embeddingService.upsert(taskEvent(1L, "grocery list milk and eggs", "alice", "tenant-a"));
-        embeddingService.upsert(taskEvent(2L, "grocery shopping for vegetables", "carol", "tenant-a"));
-        embeddingService.upsert(taskEvent(3L, "grocery budget spreadsheet", "bob", "tenant-b"));
+        // embeddingService.upsert now reloads the task from Postgres (see threat #23 fix), so each
+        // event needs a real backing row for the service to find under the matching tenant.
+        Long aliceTaskId = persistTask("grocery list milk and eggs", "alice", "tenant-a");
+        Long carolTaskId = persistTask("grocery shopping for vegetables", "carol", "tenant-a");
+        Long bobTaskId = persistTask("grocery budget spreadsheet", "bob", "tenant-b");
+
+        embeddingService.upsert(taskEvent(aliceTaskId, "grocery list milk and eggs", "alice", "tenant-a"));
+        embeddingService.upsert(taskEvent(carolTaskId, "grocery shopping for vegetables", "carol", "tenant-a"));
+        embeddingService.upsert(taskEvent(bobTaskId, "grocery budget spreadsheet", "bob", "tenant-b"));
 
         // alice (tenant-a) sees only her own task — not carol's (same tenant, different owner).
-        assertEquals(List.of(1L), taskIds(retrieveAs("tenant-a", "alice")));
+        assertEquals(List.of(aliceTaskId), taskIds(retrieveAs("tenant-a", "alice")));
 
         // owner filter within a tenant: carol sees only hers.
-        assertEquals(List.of(2L), taskIds(retrieveAs("tenant-a", "carol")));
+        assertEquals(List.of(carolTaskId), taskIds(retrieveAs("tenant-a", "carol")));
 
         // alice in tenant-b sees nothing — RLS blocks tenant-a rows even though the owner matches.
         assertTrue(retrieveAs("tenant-b", "alice").isEmpty());
 
         // bob (tenant-b) sees only his.
-        assertEquals(List.of(3L), taskIds(retrieveAs("tenant-b", "bob")));
+        assertEquals(List.of(bobTaskId), taskIds(retrieveAs("tenant-b", "bob")));
+    }
+
+    private Long persistTask(String title, String owner, String tenantId) {
+        TenantContext.setTenantId(tenantId);
+        try {
+            Task task = new Task();
+            task.setTitle(title);
+            task.setOwner(owner);
+            task.setTenantId(tenantId);
+            task.setCompleted(false);
+            return taskRepository.save(task).getId();
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private List<Document> retrieveAs(String tenant, String owner) {

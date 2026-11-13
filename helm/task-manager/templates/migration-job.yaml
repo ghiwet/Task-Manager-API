@@ -1,0 +1,45 @@
+# Runs Flyway in isolation from the long-running app pod (threat #18): only this one-shot Job gets
+# the owner-role (taskuser) credentials, via the migration-secret; the app Secret/ConfigMap no
+# longer carry SPRING_FLYWAY_*. Named per release so each new image tag gets a distinct Job object
+# instead of hitting Kubernetes' immutable-Job-spec restriction on reuse -- the Application's
+# existing `prune: true` cleans up the previous release's Job automatically. sync-wave "0" (the app
+# Deployment is wave "1") makes Argo CD wait for this Job to reach Succeeded before syncing the app,
+# the same mechanism already used to order the SealedSecret (wave "-1") ahead of everything.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-migrate-%s" (include "task-manager.fullname" .) (.Values.image.tag | default .Chart.AppVersion | replace "." "-" | trunc 20 | trimSuffix "-") }}
+  labels:
+    {{- include "task-manager.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "task-manager.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "task-manager.fullname" . }}-config
+            - secretRef:
+                name: {{ include "task-manager.fullname" . }}-secret
+            - secretRef:
+                name: {{ include "task-manager.fullname" . }}-migration-secret
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: migrate
+            - name: SPRING_FLYWAY_USER
+              value: {{ .Values.config.flywayUser | quote }}

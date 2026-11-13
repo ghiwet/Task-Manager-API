@@ -25,6 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EmbeddedKafka(partitions = 1)
 @TestPropertySource(properties = {
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
+        // @EmbeddedKafka runs unauthenticated; override the SASL default meant for the real broker.
+        "spring.kafka.security.protocol=PLAINTEXT",
         "rate-limit.enabled=false",
         // AI on, but chat points nowhere so the call fails locally.
         "spring.ai.openai.api-key=test-key",

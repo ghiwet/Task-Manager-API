@@ -13,6 +13,40 @@ locals {
   kafka         = { app = "kafka" }
   keycloak      = { app = "keycloak" }
   elasticsearch = { app = "elasticsearch" }
+
+  kafka_jaas_conf = <<-EOT
+    KafkaServer {
+      org.apache.kafka.common.security.scram.ScramLoginModule required
+      username="inter-broker"
+      password="inter-broker-secret";
+    };
+  EOT
+
+  # Shared with the init container below so its one-time format step generates the same
+  # server.properties the main container would (see docker-compose.yml for the matching setup).
+  kafka_common_env = {
+    KAFKA_NODE_ID                                   = "1"
+    KAFKA_PROCESS_ROLES                             = "broker,controller"
+    KAFKA_LISTENERS                                 = "SASL://:9092,CONTROLLER://:9093"
+    KAFKA_ADVERTISED_LISTENERS                      = "SASL://kafka:9092"
+    KAFKA_CONTROLLER_QUORUM_VOTERS                  = "1@localhost:9093"
+    KAFKA_CONTROLLER_LISTENER_NAMES                 = "CONTROLLER"
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP            = "CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT"
+    KAFKA_INTER_BROKER_LISTENER_NAME                = "SASL"
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR          = "1"
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR  = "1"
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR             = "1"
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS          = "0"
+    CLUSTER_ID                                      = "MkU3OEVBNTcwNTJENDM2Qk"
+    KAFKA_LOG_DIRS                                   = "/var/lib/kafka/data"
+    KAFKA_SASL_ENABLED_MECHANISMS                   = "SCRAM-SHA-512"
+    KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL      = "SCRAM-SHA-512"
+    KAFKA_AUTHORIZER_CLASS_NAME                     = "org.apache.kafka.metadata.authorizer.StandardAuthorizer"
+    # Only one real trust domain here (the app, producer + all consumer-group roles) plus the
+    # broker's own inter-broker identity -- super-user status replaces hand-written per-topic ACLs.
+    KAFKA_SUPER_USERS                               = "User:inter-broker;User:taskmanager-app"
+    KAFKA_OPTS                                       = "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+  }
 }
 
 # ---------------- Postgres (pgvector: the vector extension the V6 migration needs) ----------------
@@ -172,6 +206,18 @@ resource "kubernetes_service" "elasticsearch" {
 # ---------------- Kafka (single-node KRaft) ----------------
 # Advertised as the in-cluster service DNS ("kafka:9092"), so pods reach it correctly — unlike the
 # docker-compose broker that advertises localhost.
+
+# Mounted into both the init container and the main container's KAFKA_OPTS (see kafka_common_env).
+resource "kubernetes_config_map" "kafka_jaas" {
+  metadata {
+    name      = "kafka-jaas"
+    namespace = var.namespace
+  }
+  data = {
+    "kafka_server_jaas.conf" = local.kafka_jaas_conf
+  }
+}
+
 resource "kubernetes_deployment" "kafka" {
   metadata {
     name      = "kafka"
@@ -184,57 +230,77 @@ resource "kubernetes_deployment" "kafka" {
     template {
       metadata { labels = local.kafka }
       spec {
+        volume {
+          name = "kafka-data"
+          empty_dir {}
+        }
+        volume {
+          name = "kafka-jaas"
+          config_map {
+            name = kubernetes_config_map.kafka_jaas.metadata[0].name
+          }
+        }
+
+        # No PVC for this single-replica dev cluster (storage is already wiped on every pod
+        # restart), so formatting once per pod start here -- rather than persisting credentials
+        # across restarts -- matches the existing ephemeral lifecycle. Seeds the SCRAM credentials
+        # directly at format time (kafka-storage.sh format --add-scram, KIP-900) so the broker never
+        # has to serve an unauthenticated listener to bootstrap them.
+        init_container {
+          name    = "kafka-init"
+          image   = var.kafka_image
+          command = ["/bin/sh", "-c"]
+          args = [<<-EOT
+            set -e
+            /opt/kafka/bin/kafka-run-class.sh kafka.docker.KafkaDockerWrapper setup \
+              --default-configs-dir /etc/kafka/docker \
+              --mounted-configs-dir /mnt/shared/config \
+              --final-configs-dir /opt/kafka/config
+            /opt/kafka/bin/kafka-storage.sh format \
+              --cluster-id "$CLUSTER_ID" \
+              --config /opt/kafka/config/server.properties \
+              --ignore-formatted \
+              --add-scram 'SCRAM-SHA-512=[name=inter-broker,password=inter-broker-secret]' \
+              --add-scram 'SCRAM-SHA-512=[name=taskmanager-app,password=taskmanager-secret]'
+          EOT
+          ]
+          dynamic "env" {
+            for_each = local.kafka_common_env
+            content {
+              name  = env.key
+              value = env.value
+            }
+          }
+          volume_mount {
+            name       = "kafka-data"
+            mount_path = "/var/lib/kafka/data"
+          }
+          volume_mount {
+            name       = "kafka-jaas"
+            mount_path = "/etc/kafka/secrets"
+            read_only  = true
+          }
+        }
+
         container {
           name  = "kafka"
           image = var.kafka_image
           port { container_port = 9092 }
-          env {
-            name  = "KAFKA_NODE_ID"
-            value = "1"
+          dynamic "env" {
+            for_each = local.kafka_common_env
+            content {
+              name  = env.key
+              value = env.value
+            }
           }
-          env {
-            name  = "KAFKA_PROCESS_ROLES"
-            value = "broker,controller"
+          volume_mount {
+            name       = "kafka-data"
+            mount_path = "/var/lib/kafka/data"
           }
-          env {
-            name  = "KAFKA_LISTENERS"
-            value = "PLAINTEXT://:9092,CONTROLLER://:9093"
-          }
-          env {
-            name  = "KAFKA_ADVERTISED_LISTENERS"
-            value = "PLAINTEXT://kafka:9092"
-          }
-          env {
-            name  = "KAFKA_CONTROLLER_QUORUM_VOTERS"
-            value = "1@localhost:9093"
-          }
-          env {
-            name  = "KAFKA_CONTROLLER_LISTENER_NAMES"
-            value = "CONTROLLER"
-          }
-          env {
-            name  = "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP"
-            value = "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-          }
-          env {
-            name  = "KAFKA_INTER_BROKER_LISTENER_NAME"
-            value = "PLAINTEXT"
-          }
-          env {
-            name  = "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR"
-            value = "1"
-          }
-          env {
-            name  = "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR"
-            value = "1"
-          }
-          env {
-            name  = "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR"
-            value = "1"
-          }
-          env {
-            name  = "KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS"
-            value = "0"
+          volume_mount {
+            name       = "kafka-jaas"
+            mount_path = "/etc/kafka/secrets"
+            read_only  = true
           }
         }
       }

@@ -8,6 +8,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -21,6 +22,7 @@ public class TaskmanagerApplication {
 	}
 
 	@Bean
+	@Profile("!migrate")
 	CommandLineRunner init(AppUserRepository repository, PasswordEncoder encoder) {
 		return args -> {
 			seedUser(repository, "user", encoder.encode("password"), Set.of(Role.ROLE_USER));

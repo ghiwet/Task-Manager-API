@@ -11,7 +11,9 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(properties = {
         "spring.ai.model.chat=none",
         "spring.ai.model.embedding=none",
-        "spring.autoconfigure.exclude=org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration"
+        "spring.autoconfigure.exclude=org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration",
+        // @EmbeddedKafka runs unauthenticated; override the SASL default meant for the real broker.
+        "spring.kafka.security.protocol=PLAINTEXT"
 })
 public abstract class AbstractIntegrationTest {
 }

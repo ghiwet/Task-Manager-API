@@ -28,6 +28,8 @@ config:
   datasourceUsername: app_rls
   flywayUser: taskuser
   kafkaBootstrapServers: kafka:9092
+  kafkaSecurityProtocol: SASL_PLAINTEXT
+  kafkaSaslMechanism: SCRAM-SHA-512
   redisHost: redis
   redisPort: 6379
   elasticsearchUris: http://elasticsearch:9200
@@ -45,6 +47,11 @@ secrets:
   create: true
   datasourcePassword: app_rls_pass
   flywayPassword: taskpass
+  # Full JAAS config line, not just a password -- spring.kafka.properties.sasl.jaas.config embeds
+  # both the username and password in one string, so the whole value has to live in the Secret.
+  kafkaSaslJaasConfig: >-
+    org.apache.kafka.common.security.scram.ScramLoginModule required
+    username="taskmanager-app" password="taskmanager-secret";
   keycloakClientSecret: secret123
   openaiApiKey: ""
 

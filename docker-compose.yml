@@ -1,5 +1,38 @@
 version: '3.8'
 
+# Shared broker config so kafka-init's one-time format step generates the same server.properties
+# the kafka service itself would, by using the same KAFKA_* inputs (both run the image's own
+# KafkaDockerWrapper setup step against this env before kafka-init additionally formats storage).
+x-kafka-common-env: &kafka-common-env
+  KAFKA_NODE_ID: "1"
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: "SASL://:9092,CONTROLLER://:9093,SASL_HOST://:29092"
+  KAFKA_ADVERTISED_LISTENERS: "SASL://kafka:9092,SASL_HOST://localhost:29092"
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "SASL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT,SASL_HOST:SASL_PLAINTEXT"
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: SASL
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+  CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+  # Must match the kafka_data volume mount path on both kafka-init and kafka below -- otherwise
+  # each container's wrapper falls back to its own ephemeral default dir and kafka-init's format
+  # (with the seeded SCRAM credentials) never actually lands where the main container looks.
+  KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+  KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+  KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+  KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+  # There's only one real trust domain here -- the app plays producer and all consumer-group roles
+  # -- so super-user status for its principal (plus the broker's own inter-broker one) replaces
+  # hand-written per-topic ACLs; the authorizer's default-deny covers every other principal.
+  # ANONYMOUS must be included too: the CONTROLLER listener (quorum/broker-registration traffic)
+  # stays PLAINTEXT with no SASL -- it's intra-cluster only, never exposed via a host port -- so
+  # once the authorizer is on, the controller's own internal traffic needs this exemption or the
+  # broker can't even register itself.
+  KAFKA_SUPER_USERS: "User:ANONYMOUS;User:inter-broker;User:taskmanager-app;User:kafka-ui"
+  KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+
 services:
   postgres:
     image: pgvector/pgvector:pg18
@@ -53,28 +86,65 @@ services:
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
 
+  # One-shot: formats Kafka's storage and seeds the SCRAM credentials directly into the
+  # __cluster_metadata log via `kafka-storage.sh format --add-scram` (KIP-900) -- confirmed
+  # supported in this exact image by inspecting its `kafka-storage.sh format --help`. This avoids
+  # the usual "temporary unauthenticated listener" chicken-and-egg workaround: since this is a fresh
+  # format every time (no existing cluster to add a user to without downtime), seeding credentials
+  # at format time means the broker never has to serve traffic unauthenticated. Shares kafka_data
+  # with the kafka service, which detects storage is already formatted and skips its own format step.
+  kafka-init:
+    image: apache/kafka:4.3.0
+    container_name: taskmanager_kafka_init
+    environment:
+      <<: *kafka-common-env
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+      - ./kafka/kafka_server_jaas.conf:/etc/kafka/secrets/kafka_server_jaas.conf:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # Deliberately not going through KafkaDockerWrapper's own "setup" step here -- it formats
+        # storage itself as part of generating server.properties, which would silently beat us to
+        # it (no --add-scram) and make our own format call below a no-op against an
+        # already-formatted directory. kafka-storage.sh format only needs the KRaft identity
+        # properties to seed bootstrap metadata, not the full runtime config, so a minimal
+        # hand-written file is enough.
+        cat > /tmp/format.properties <<-PROPS
+        process.roles=broker,controller
+        node.id=1
+        controller.quorum.voters=1@kafka:9093
+        controller.listener.names=CONTROLLER
+        listeners=SASL://:9092,CONTROLLER://:9093
+        advertised.listeners=SASL://kafka:9092
+        listener.security.protocol.map=SASL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+        inter.broker.listener.name=SASL
+        log.dirs=/var/lib/kafka/data
+        PROPS
+        /opt/kafka/bin/kafka-storage.sh format \
+          --cluster-id "$$CLUSTER_ID" \
+          --config /tmp/format.properties \
+          --ignore-formatted \
+          --add-scram 'SCRAM-SHA-512=[name=inter-broker,password=inter-broker-secret]' \
+          --add-scram 'SCRAM-SHA-512=[name=taskmanager-app,password=taskmanager-secret]' \
+          --add-scram 'SCRAM-SHA-512=[name=kafka-ui,password=kafka-ui-secret]'
+
   kafka:
     image: apache/kafka:4.3.0
     container_name: taskmanager_kafka
     hostname: kafka
     restart: always
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      <<: *kafka-common-env
     ports:
       - "29092:29092"
     volumes:
       - kafka_data:/var/lib/kafka/data
+      - ./kafka/kafka_server_jaas.conf:/etc/kafka/secrets/kafka_server_jaas.conf:ro
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -85,6 +155,9 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-512
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka-ui" password="kafka-ui-secret";'
     ports:
       - "8083:8080"
 

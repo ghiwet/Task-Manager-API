@@ -1,6 +1,8 @@
 package com.example.taskmanager.ai;
 
 import com.example.taskmanager.event.TaskEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
@@ -25,6 +27,8 @@ import java.util.UUID;
 @Service
 public class TaskEmbeddingService {
 
+    private static final Logger log = LoggerFactory.getLogger(TaskEmbeddingService.class);
+
     private final ObjectProvider<VectorStore> vectorStoreProvider;
     private final JdbcTemplate jdbcTemplate;
 
@@ -40,12 +44,20 @@ public class TaskEmbeddingService {
             return;
         }
         bindTenant(event.getTenantId());
+        // Reload from Postgres on the same tenant-bound connection rather than trusting the event
+        // payload: a forged Kafka event can't plant arbitrary content since RLS only returns the
+        // row if it actually belongs to the tenant we just bound.
+        TaskRow row = loadTask(event.getTaskId());
+        if (row == null) {
+            log.warn("Task {} not found for tenant {}; skipping embedding upsert", event.getTaskId(), event.getTenantId());
+            return;
+        }
         Document document = Document.builder()
                 .id(documentId(event.getTaskId()))
-                .text(buildContent(event))
+                .text(buildContent(row.title(), row.description()))
                 .metadata(Map.of(
                         "taskId", event.getTaskId(),
-                        "owner", event.getOwner()))
+                        "owner", row.owner()))
                 .build();
         vectorStore.add(List.of(document));
     }
@@ -64,15 +76,22 @@ public class TaskEmbeddingService {
         jdbcTemplate.queryForObject("SELECT set_config('app.current_tenant', ?, true)", String.class, tenantId);
     }
 
-    private String buildContent(TaskEvent event) {
-        String description = event.getDescription();
-        return (description == null || description.isBlank())
-                ? event.getTitle()
-                : event.getTitle() + "\n" + description;
+    private TaskRow loadTask(Long taskId) {
+        List<TaskRow> rows = jdbcTemplate.query(
+                "SELECT title, description, owner FROM tasks WHERE id = ?",
+                (rs, rowNum) -> new TaskRow(rs.getString("title"), rs.getString("description"), rs.getString("owner")),
+                taskId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private String buildContent(String title, String description) {
+        return (description == null || description.isBlank()) ? title : title + "\n" + description;
     }
 
     // Stable per-task UUID so re-indexing a task upserts its row rather than duplicating it.
     private String documentId(Long taskId) {
         return UUID.nameUUIDFromBytes(("task:" + taskId).getBytes(StandardCharsets.UTF_8)).toString();
     }
+
+    private record TaskRow(String title, String description, String owner) {}
 }

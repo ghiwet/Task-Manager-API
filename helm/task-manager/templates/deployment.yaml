@@ -4,6 +4,10 @@ metadata:
   name: {{ include "task-manager.fullname" . }}
   labels:
     {{- include "task-manager.labels" . | nindent 4 }}
+  annotations:
+    # Wave "1": Argo CD waits for the migration Job (wave "0") to reach Succeeded first, so the
+    # schema is already migrated before these pods' Hibernate validate=true check runs.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -32,6 +36,12 @@ spec:
                 name: {{ include "task-manager.fullname" . }}-config
             - secretRef:
                 name: {{ include "task-manager.fullname" . }}-secret
+          env:
+            # The migration Job (not this pod) now owns running Flyway (threat #18); this pod no
+            # longer even has the SPRING_FLYWAY_* credentials to do so. Explicit env wins over
+            # envFrom on a name collision, so this is a safe override regardless of defaults.
+            - name: SPRING_FLYWAY_ENABLED
+              value: "false"
           # Startup probe absorbs the wait for Postgres/Kafka/Keycloak so the pod isn't
           # killed while dependencies come up; readiness/liveness use the app's health groups.
           startupProbe:

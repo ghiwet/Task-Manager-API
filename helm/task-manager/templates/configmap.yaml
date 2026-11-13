@@ -7,8 +7,9 @@ metadata:
 data:
   SPRING_DATASOURCE_URL: {{ .Values.config.datasourceUrl | quote }}
   SPRING_DATASOURCE_USERNAME: {{ .Values.config.datasourceUsername | quote }}
-  SPRING_FLYWAY_USER: {{ .Values.config.flywayUser | quote }}
   SPRING_KAFKA_BOOTSTRAP_SERVERS: {{ .Values.config.kafkaBootstrapServers | quote }}
+  SPRING_KAFKA_SECURITY_PROTOCOL: {{ .Values.config.kafkaSecurityProtocol | quote }}
+  SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: {{ .Values.config.kafkaSaslMechanism | quote }}
   REDIS_HOST: {{ .Values.config.redisHost | quote }}
   REDIS_PORT: {{ .Values.config.redisPort | quote }}
   ELASTICSEARCH_URIS: {{ .Values.config.elasticsearchUris | quote }}
