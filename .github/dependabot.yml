@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in .github/workflows/*.yml current: Dependabot reads the
+  # trailing "# vX" comment, opens a PR bumping both the SHA and the comment when a new
+  # release ships. Without this, a SHA pin is frozen forever once set by hand.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
