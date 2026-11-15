@@ -1,0 +1,6 @@
+# Threat #44: Argo CD auto-syncs main, so a merge to these paths changes what runs in the cluster.
+/argocd/ @ghiwet
+/helm/   @ghiwet
+
+# Protects this file itself from being edited without the same review.
+/.github/ @ghiwet
