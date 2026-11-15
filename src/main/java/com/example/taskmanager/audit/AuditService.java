@@ -21,8 +21,12 @@ public class AuditService {
 
     @Transactional
     public void record(AuditAction action, String targetType, String targetId) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            throw new IllegalStateException("Cannot audit " + action + ": no authenticated actor in context");
+        }
         AuditLog entry = new AuditLog();
-        entry.setActor(SecurityContextHolder.getContext().getAuthentication().getName());
+        entry.setActor(authentication.getName());
         entry.setTenantId(TenantContext.getTenantId());
         entry.setAction(action);
         entry.setTargetType(targetType);

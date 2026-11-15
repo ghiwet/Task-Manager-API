@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Proves the audit trail (threat #2): admin cross-user actions create the right row, and --
@@ -204,6 +205,25 @@ class AuditLogTest extends AbstractIntegrationTest {
                 jdbcTemplate.update("UPDATE audit_log SET actor = ? WHERE id = ?", "tampered", entryId));
         assertThrows(DataAccessException.class, () ->
                 jdbcTemplate.update("DELETE FROM audit_log WHERE id = ?", entryId));
+    }
+
+    @Test
+    void adminCanListAuditLog() throws Exception {
+        persistUser("erin");
+        mockMvc.perform(delete("/api/v1/users/erin").with(admin("root-admin")))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/audit").with(admin("root-admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].actor").value("root-admin"))
+                .andExpect(jsonPath("$.content[0].action").value("USER_DELETED"))
+                .andExpect(jsonPath("$.content[0].targetId").value("erin"));
+    }
+
+    @Test
+    void nonAdminCannotListAuditLog() throws Exception {
+        mockMvc.perform(get("/api/v1/audit").with(user("frank")))
+                .andExpect(status().isForbidden());
     }
 
     private long countEntries() {
