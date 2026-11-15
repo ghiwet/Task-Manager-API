@@ -7,3 +7,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # A newly published action release could be malicious or unstable; waiting lets the
+    # community catch that before this repo adopts it. Doesn't delay security updates.
+    cooldown:
+      default-days: 7
