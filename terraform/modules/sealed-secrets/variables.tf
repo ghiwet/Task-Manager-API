@@ -10,15 +10,14 @@ variable "chart_version" {
   default     = "2.5.19"
 }
 
-variable "sealing_cert" {
-  description = "PEM public cert for the controller's sealing key. Empty = controller self-generates."
+variable "sealing_cert_path" {
+  description = "Path to the PEM public cert for the controller's sealing key. Missing file = controller self-generates."
   type        = string
   default     = ""
 }
 
-variable "sealing_key" {
-  description = "PEM private key for the controller's sealing key. Empty = controller self-generates."
+variable "sealing_key_path" {
+  description = "Path to the PEM private key for the controller's sealing key. Missing file = controller self-generates. A path, not file content, keeps the key out of state (threat #43)."
   type        = string
   default     = ""
-  sensitive   = true
 }

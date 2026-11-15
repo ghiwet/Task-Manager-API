@@ -4,9 +4,9 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.17"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.35"
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 }
@@ -14,20 +14,27 @@ terraform {
 # Seed a fixed sealing keypair so the controller adopts it instead of generating a fresh one per
 # cluster — committed SealedSecrets then decrypt across recreates. Skipped when the keypair is absent
 # (controller self-generates). Private key gitignored; public cert committed for kubeseal.
-resource "kubernetes_secret" "sealing_key" {
-  count = var.sealing_cert != "" && var.sealing_key != "" ? 1 : 0
+#
+# Threat #43: a kubernetes_secret resource would write the plaintext key into terraform.tfstate.
+# local-exec + the key's file path keeps it out of state -- only a one-way filesha256 trigger lands there.
+resource "null_resource" "sealing_key" {
+  count = fileexists(var.sealing_cert_path) && fileexists(var.sealing_key_path) ? 1 : 0
 
-  metadata {
-    name      = "sealed-secrets-key-bootstrap"
+  triggers = {
+    cert_hash = filesha256(var.sealing_cert_path)
+    key_hash  = filesha256(var.sealing_key_path)
     namespace = var.namespace
-    labels = {
-      "sealedsecrets.bitnami.com/sealed-secrets-key" = "active"
-    }
   }
-  type = "kubernetes.io/tls"
-  data = {
-    "tls.crt" = var.sealing_cert
-    "tls.key" = var.sealing_key
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -euo pipefail
+      kubectl create secret tls sealed-secrets-key-bootstrap \
+        --cert="${var.sealing_cert_path}" --key="${var.sealing_key_path}" \
+        -n "${var.namespace}" --dry-run=client -o yaml \
+        | kubectl label --local -f - "sealedsecrets.bitnami.com/sealed-secrets-key=active" -o yaml \
+        | kubectl apply -f -
+    EOT
   }
 }
 
@@ -49,5 +56,5 @@ resource "helm_release" "sealed_secrets" {
     value = "sealed-secrets-controller"
   }
 
-  depends_on = [kubernetes_secret.sealing_key]
+  depends_on = [null_resource.sealing_key]
 }

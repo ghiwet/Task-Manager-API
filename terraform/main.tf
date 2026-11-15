@@ -31,9 +31,9 @@ module "argocd" {
 # Secrets management: install the Sealed Secrets controller and seed it a fixed keypair so committed
 # SealedSecrets survive cluster recreates (private key gitignored, public cert committed).
 module "sealed_secrets" {
-  source       = "./modules/sealed-secrets"
-  sealing_cert = fileexists(local.sealing_cert_path) ? file(local.sealing_cert_path) : ""
-  sealing_key  = fileexists(local.sealing_key_path) ? file(local.sealing_key_path) : ""
+  source            = "./modules/sealed-secrets"
+  sealing_cert_path = local.sealing_cert_path
+  sealing_key_path  = local.sealing_key_path
 }
 
 locals {
