@@ -1,5 +1,7 @@
 package com.example.taskmanager.service;
 
+import com.example.taskmanager.audit.AuditAction;
+import com.example.taskmanager.audit.AuditService;
 import com.example.taskmanager.dto.TaskCreateDto;
 import com.example.taskmanager.dto.TaskDto;
 import com.example.taskmanager.event.TaskEvent;
@@ -31,13 +33,15 @@ public class TaskService {
     private final OutboxRepository outboxRepository;
     private final JsonMapper jsonMapper;
     private final MeterRegistry meterRegistry;
+    private final AuditService auditService;
 
     public TaskService(TaskRepository taskRepository, OutboxRepository outboxRepository,
-                       JsonMapper jsonMapper, MeterRegistry meterRegistry) {
+                       JsonMapper jsonMapper, MeterRegistry meterRegistry, AuditService auditService) {
         this.taskRepository = taskRepository;
         this.outboxRepository = outboxRepository;
         this.jsonMapper = jsonMapper;
         this.meterRegistry = meterRegistry;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -116,6 +120,10 @@ public class TaskService {
                             .orElseThrow(() -> new TaskNotFoundException("Task with ID " + id + " not found"));
             meterRegistry.counter("task.operations.total", "type", TaskEventType.DELETED.name()).increment();
             publishEvent(task, TaskEventType.DELETED);
+            // Audit only the cross-user case: an admin deleting their own task isn't the risk here.
+            if (isAdmin && !task.getOwner().equals(owner)) {
+                auditService.record(AuditAction.TASK_DELETED, "task", String.valueOf(id));
+            }
             taskRepository.delete(task);
         });
     }

@@ -58,7 +58,7 @@ public class UserController {
         if (!authentication.getName().equals(username) && authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        AppUser updated = userService.updateUser(username, userUpdates);
+        AppUser updated = userService.updateUser(username, userUpdates, authentication.getName());
         return ResponseEntity.ok(UserResponseDto.from(updated));
     }
 
