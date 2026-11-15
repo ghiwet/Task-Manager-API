@@ -42,6 +42,21 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+			<!-- kafka-clients' own transitive codec deps have open CVEs. Overriding just these two
+			     leaf libraries (stable public APIs, no coupling to Kafka internals) instead of
+			     bumping kafka.version, which breaks spring-kafka-test's EmbeddedKafkaKraftBroker
+			     (it calls an internal Kafka API whose signature changed in the one kafka-clients
+			     release that patches both). -->
+			<dependency>
+				<groupId>at.yawk.lz4</groupId>
+				<artifactId>lz4-java</artifactId>
+				<version>1.11.4</version>
+			</dependency>
+			<dependency>
+				<groupId>org.xerial.snappy</groupId>
+				<artifactId>snappy-java</artifactId>
+				<version>1.1.10.9</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
