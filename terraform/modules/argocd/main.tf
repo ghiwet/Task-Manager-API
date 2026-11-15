@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.17"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
 
@@ -25,5 +29,17 @@ resource "helm_release" "argocd" {
   set {
     name  = "configs.params.server\\.insecure"
     value = "true"
+  }
+}
+
+# Threat #49: delete the initial admin secret right after install so the one-time bootstrap
+# password can't linger as a standing credential.
+resource "null_resource" "delete_initial_admin_secret" {
+  triggers = {
+    argocd_release = helm_release.argocd.id
+  }
+
+  provisioner "local-exec" {
+    command = "kubectl delete secret argocd-initial-admin-secret -n ${var.namespace} --ignore-not-found"
   }
 }

@@ -29,8 +29,10 @@ variable "redis_image" {
 }
 
 variable "kafka_image" {
+  # Must stay 4.3.0+ to match the SASL/KRaft setup in this module's init_container, and
+  # docker-compose.yml's pin.
   type    = string
-  default = "apache/kafka:3.9.0"
+  default = "apache/kafka:4.3.0"
 }
 
 variable "keycloak_image" {
@@ -46,4 +48,10 @@ variable "elasticsearch_image" {
 variable "realm_export_path" {
   description = "Path to the Keycloak realm export imported on startup."
   type        = string
+}
+
+variable "app_pod_label" {
+  description = "Label selector for the app's pods, used by each NetworkPolicy's ingress allow-list (threat #51). Must match helm/task-manager's selectorLabels."
+  type        = map(string)
+  default     = { "app.kubernetes.io/name" = "task-manager" }
 }

@@ -397,3 +397,68 @@ resource "kubernetes_service" "keycloak" {
     }
   }
 }
+
+# ---------------- NetworkPolicies (threat #51) ----------------
+# Default-deny ingress per backing service, allowing only the app pod. Egress is left unrestricted --
+# a plain NetworkPolicy can't do FQDN-based egress rules (e.g. the app's OpenAI calls) without a
+# DNS-aware CNI like Cilium.
+locals {
+  backing_service_ports = {
+    postgres      = { selector = local.postgres, port = 5432 }
+    redis         = { selector = local.redis, port = 6379 }
+    kafka         = { selector = local.kafka, port = 9092 }
+    elasticsearch = { selector = local.elasticsearch, port = 9200 }
+    keycloak      = { selector = local.keycloak, port = 8080 }
+  }
+}
+
+resource "kubernetes_network_policy" "allow_app_only" {
+  for_each = local.backing_service_ports
+
+  metadata {
+    name      = "${each.key}-allow-app-only"
+    namespace = var.namespace
+  }
+  spec {
+    pod_selector {
+      match_labels = each.value.selector
+    }
+    policy_types = ["Ingress"]
+    ingress {
+      from {
+        pod_selector {
+          match_labels = var.app_pod_label
+        }
+      }
+      ports {
+        port     = each.value.port
+        protocol = "TCP"
+      }
+    }
+  }
+}
+
+# allow_app_only above would otherwise block Kafka's own KRaft controller self-connection (9093).
+resource "kubernetes_network_policy" "kafka_allow_self_controller" {
+  metadata {
+    name      = "kafka-allow-self-controller"
+    namespace = var.namespace
+  }
+  spec {
+    pod_selector {
+      match_labels = local.kafka
+    }
+    policy_types = ["Ingress"]
+    ingress {
+      from {
+        pod_selector {
+          match_labels = local.kafka
+        }
+      }
+      ports {
+        port     = 9093
+        protocol = "TCP"
+      }
+    }
+  }
+}
