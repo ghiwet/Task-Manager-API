@@ -369,7 +369,8 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 
 > A STRIDE threat model for this system (runtime data flows + the delivery pipeline) is maintained in
 > [`ThreatDragonModels/`](ThreatDragonModels/Task_manager_threat_model/Task_manager_threat_model.json)
-> (OWASP Threat Dragon format).
+> (OWASP Threat Dragon format). [`docs/case-studies.md`](docs/case-studies.md) writes up two of the
+> real bugs found and fixed while hardening Kafka — found it, investigated, fixed, verified.
 
 ### 🚦 Rate Limiting
 
