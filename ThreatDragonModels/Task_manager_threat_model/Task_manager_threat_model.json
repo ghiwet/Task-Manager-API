@@ -1089,6 +1089,45 @@
                   "number": 20,
                   "score": "",
                   "new": false
+                },
+                {
+                  "id": "2089bf5f-28d3-4538-8f0a-b6185bccaf42",
+                  "title": "Callers without a tenant_id share the '__unresolved__' fallback tenant",
+                  "type": "Elevation of privilege",
+                  "status": "Open",
+                  "severity": "High",
+                  "description": "TenantContext.getTenantId() returns the sentinel '__unresolved__' when no tenant is bound. TenantFilter only reads the tenant_id claim from a JwtAuthenticationToken, so every JWT missing the claim (a Keycloak user without the attribute, service-account or Swagger tokens) and every oauth2Login browser session runs as '__unresolved__'. RLS default-denies reads of real tenants, but the sentinel is itself writable: services stamp tenant_id='__unresolved__' on insert and the WITH CHECK policy accepts it. All such unrelated callers therefore share one tenant, and an admin among them can list (/tasks/all, /users) and delete the others' data.",
+                  "mitigation": "Fail closed instead of falling back: reject (401/403) any API request with no resolvable tenant_id in TenantFilter, and/or add a CHECK constraint or RLS WITH CHECK clause that forbids tenant_id='__unresolved__' on insert. Resolve the tenant for oauth2Login sessions from the OIDC ID token, or keep them off /api/**. Add a test asserting that a tenant-less token cannot create rows.",
+                  "modelType": "STRIDE",
+                  "number": 52,
+                  "score": "",
+                  "new": false
+                },
+                {
+                  "id": "90d44d79-3415-4d0c-abaf-ca08cbc0a7b8",
+                  "title": "Unbounded metric cardinality from raw request URI tag",
+                  "type": "Denial of service",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "description": "RateLimitFilter tags the rate.limit.exceeded.total counter with request.getRequestURI(), which the client controls. Once throttled, an anonymous client can request /x/<random> repeatedly; each distinct path registers a new Micrometer meter, growing heap use and the /actuator/prometheus payload (and Prometheus TSDB series) without bound.",
+                  "mitigation": "Tag with a bounded value: the matched route template (BEST_MATCHING_PATTERN_ATTRIBUTE) or the bucket/key type only, never the raw URI. Optionally add a MeterFilter.maximumAllowableTags guard on rate.limit.exceeded.total.",
+                  "modelType": "STRIDE",
+                  "number": 53,
+                  "score": "",
+                  "new": false
+                },
+                {
+                  "id": "bae497bc-79b9-471e-84d4-c5222c056738",
+                  "title": "Unbounded task description size",
+                  "type": "Denial of service",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "description": "TaskCreateDto.description has no @Size limit (title is capped at 255). An authenticated user within the 60 req/min limit can store multi-MB descriptions, which then inflate the outbox row, the Kafka message, ONNX embedding work, the Elasticsearch document, consumer logs and the OpenAI prompt (token cost), slowing consumers or pushing messages to the DLT.",
+                  "mitigation": "Add @Size(max = ...) on description (and a matching column/DB CHECK limit), cap spring.servlet multipart/request body size at the ingress and in Tomcat, and truncate retrieved context before building the LLM prompt.",
+                  "modelType": "STRIDE",
+                  "number": 54,
+                  "score": "",
+                  "new": false
                 }
               ],
               "handlesCardPayment": false,
@@ -2803,6 +2842,19 @@
                   "mitigation": "Terminate TLS at the ingress for every non-local environment and redirect HTTP.",
                   "modelType": "STRIDE",
                   "number": 40,
+                  "score": "",
+                  "new": false
+                },
+                {
+                  "id": "fb291e30-5e45-49b1-893b-3b290905df74",
+                  "title": "CSRF on /api/** for session-authenticated browser requests",
+                  "type": "Tampering",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "description": "WebSecurityConfig disables CSRF for /api/** on the assumption the API is Bearer-token-only, but the same SecurityFilterChain also enables oauth2Login, so a browser holding a JSESSIONID is authenticated on /api/** routes guarded only by .anyRequest().authenticated() (e.g. POST /api/v1/tasks). An attacker page can trigger state-changing requests carrying the session cookie and no CSRF token; JSON bodies currently need a CORS preflight, which limits exploitation, but any endpoint that accepts a simple (form/text) content type, or a future one, becomes exploitable.",
+                  "mitigation": "Split into two SecurityFilterChains: an /api/** chain that is stateless and accepts only Bearer JWTs (no oauth2Login, SessionCreationPolicy.STATELESS), and a browser chain for /login, /dashboard and /logout with CSRF enabled. Alternatively, keep CSRF enabled for any request authenticated by a session. Add a test that a session-cookie POST to /api/** is rejected.",
+                  "modelType": "STRIDE",
+                  "number": 55,
                   "score": "",
                   "new": false
                 }
@@ -5857,6 +5909,6 @@
     ],
     "diagramTop": 2,
     "reviewer": "",
-    "threatTop": 51
+    "threatTop": 55
   }
 }
