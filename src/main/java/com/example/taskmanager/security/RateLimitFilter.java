@@ -105,11 +105,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return request.getRequestURI().startsWith("/api/v1/assistant/");
     }
 
+    // Never read X-Forwarded-For here: it is client-controlled, and keying on it let an anonymous
+    // caller rotate the header for a fresh bucket per request (threat #16). With
+    // server.forward-headers-strategy=native, Tomcat's RemoteIpValve has already resolved the
+    // client address, trusting X-Forwarded-For only from server.tomcat.remoteip.internal-proxies
+    // and taking the right-most untrusted hop, so getRemoteAddr() is the real peer or client.
     private String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 

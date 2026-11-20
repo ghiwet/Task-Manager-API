@@ -376,7 +376,9 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 
 Requests are throttled with [Bucket4j](https://bucket4j.com/) token buckets via a `RateLimitFilter` placed
 just after JWT authentication in the security chain. Authenticated requests are keyed per JWT subject; anonymous
-requests fall back to the client IP (`X-Forwarded-For` aware). Each response carries an `X-Rate-Limit-Remaining`
+requests fall back to the client IP. That IP is resolved by Tomcat (`server.forward-headers-strategy=native`), which
+trusts `X-Forwarded-For` only from a trusted proxy (`server.tomcat.remoteip.internal-proxies`) and takes the right-most
+address that isn't one, so a client can't rotate the header to get a fresh bucket on every request. Each response carries an `X-Rate-Limit-Remaining`
 header; exceeded limits return `429 Too Many Requests` with a `Retry-After` header and an RFC 9457 `ProblemDetail`
 body, and increment the `rate_limit_exceeded_total` Prometheus counter.
 
