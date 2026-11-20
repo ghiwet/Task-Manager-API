@@ -380,7 +380,9 @@ requests fall back to the client IP. That IP is resolved by Tomcat (`server.forw
 trusts `X-Forwarded-For` only from a trusted proxy (`server.tomcat.remoteip.internal-proxies`) and takes the right-most
 address that isn't one, so a client can't rotate the header to get a fresh bucket on every request. Each response carries an `X-Rate-Limit-Remaining`
 header; exceeded limits return `429 Too Many Requests` with a `Retry-After` header and an RFC 9457 `ProblemDetail`
-body, and increment the `rate_limit_exceeded_total` Prometheus counter.
+body, and increment the `rate_limit_exceeded_total` Prometheus counter. That counter is tagged by `key_type`
+and a fixed `endpoint` group (`assistant`/`register`/`api`/`other`), never the raw URI, so a throttled caller
+can't create a new metric series for every random path it requests.
 
 Buckets live in **Redis** (Bucket4j's Lettuce proxy manager), so the limit is **shared across replicas** —
 an in-memory map would let N pods each grant the full limit. If Redis is unavailable the filter **fails open**

@@ -14,8 +14,11 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import io.micrometer.core.instrument.MeterRegistry;
+
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -36,6 +39,9 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @Test
     void whenRateLimitExceeded_thenReturns429WithRetryAfter() throws Exception {
@@ -88,6 +94,32 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
         }
         mockMvc.perform(get("/actuator/health").with(fromPeer("198.51.100.2")))
                 .andExpect(result -> assertNotEquals(429, result.getResponse().getStatus()));
+    }
+
+    // Threat #53: a throttled caller hitting many distinct paths must not create a meter per path.
+    @Test
+    void throttledRequestsToRandomPathsDoNotMintNewMeters() throws Exception {
+        String peer = "192.0.2.77";
+        // Other tests also throttle anonymous /actuator requests into the same series; measure the delta.
+        double before = exceededCount("ip", "other");
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(get("/actuator/health").with(fromPeer(peer)));
+        }
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(get("/probe/" + UUID.randomUUID()).with(fromPeer(peer)))
+                    .andExpect(status().isTooManyRequests());
+        }
+
+        assertEquals(0, meterRegistry.find("rate.limit.exceeded.total").tagKeys("path").counters().size(),
+                "the raw URI must not be a tag");
+        assertEquals(1, meterRegistry.find("rate.limit.exceeded.total").tags("key_type", "ip", "endpoint", "other")
+                .counters().size(), "all random paths share one bounded series");
+        assertEquals(5.0, exceededCount("ip", "other") - before, 0.0);
+    }
+
+    private double exceededCount(String keyType, String endpoint) {
+        var counter = meterRegistry.find("rate.limit.exceeded.total").tags("key_type", keyType, "endpoint", endpoint).counter();
+        return counter == null ? 0.0 : counter.count();
     }
 
     private static RequestPostProcessor fromPeer(String remoteAddr) {

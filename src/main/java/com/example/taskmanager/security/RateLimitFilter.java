@@ -83,7 +83,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } else {
             long retryAfterSeconds = Math.max(1, probe.getNanosToWaitForRefill() / 1_000_000_000);
-            meterRegistry.counter("rate.limit.exceeded.total", "key_type", keyType, "path", request.getRequestURI()).increment();
+            meterRegistry.counter("rate.limit.exceeded.total", "key_type", keyType, "endpoint", endpointGroup(request)).increment();
 
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
@@ -94,6 +94,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
                             + retryAfterSeconds + " seconds.\"}"
             );
         }
+    }
+
+    // Bounded tag value for the exceeded counter. The raw URI is client-controlled, so tagging with it let
+    // a throttled caller mint a new meter (and Prometheus series) per random path (threat #53). The route
+    // template isn't available yet either: this filter runs in the security chain, before Spring MVC
+    // matches a handler.
+    private String endpointGroup(HttpServletRequest request) {
+        if (isAssistantEndpoint(request)) {
+            return "assistant";
+        }
+        if (isRegistrationEndpoint(request)) {
+            return "register";
+        }
+        return request.getRequestURI().startsWith("/api/") ? "api" : "other";
     }
 
     private boolean isRegistrationEndpoint(HttpServletRequest request) {
