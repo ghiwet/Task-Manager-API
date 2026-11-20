@@ -13,7 +13,9 @@ import org.springframework.test.context.TestPropertySource;
         "spring.ai.model.embedding=none",
         "spring.autoconfigure.exclude=org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration",
         // @EmbeddedKafka runs unauthenticated; override the SASL default meant for the real broker.
-        "spring.kafka.security.protocol=PLAINTEXT"
+        "spring.kafka.security.protocol=PLAINTEXT",
+        // Never index into a locally running Elasticsearch; search tests bring their own via @ServiceConnection.
+        "spring.elasticsearch.uris=http://localhost:1"
 })
 public abstract class AbstractIntegrationTest {
 }

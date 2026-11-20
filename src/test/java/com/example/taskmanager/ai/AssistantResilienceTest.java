@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         // @EmbeddedKafka runs unauthenticated; override the SASL default meant for the real broker.
         "spring.kafka.security.protocol=PLAINTEXT",
         "rate-limit.enabled=false",
+        "spring.elasticsearch.uris=http://localhost:1", // never index into a local Elasticsearch
         // AI on, but chat points nowhere so the call fails locally.
         "spring.ai.openai.api-key=test-key",
         "spring.ai.openai.base-url=http://localhost:1",
