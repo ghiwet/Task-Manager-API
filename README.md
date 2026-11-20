@@ -395,8 +395,11 @@ rate-limit.registration-requests-per-minute=5     # stricter, for /api/v1/users/
 
 ### ⚡ Caching
 
-Task lookups use **cache-aside** with Spring Cache over Redis: `findTask` is `@Cacheable` (keyed by
-`owner:id`), and updates/deletes `@CacheEvict` the entry so reads never go stale. TTL is configurable
+Task lookups use **cache-aside** with Spring Cache over Redis: `findTask` is `@Cacheable`, keyed by
+`tenant:owner:id`. Cached reads never reach Postgres, so RLS can't scope them; the tenant in the key
+does. Updates evict the entry with `@CacheEvict`. Deletes evict it in code, under the task's **actual**
+owner, because an admin can delete someone else's task and the owner is only known after the lookup.
+Either way, reads never go stale. TTL is configurable
 (`cache.tasks.ttl-minutes`), and the cache **fails open** — a Redis outage falls through to the database
 instead of erroring.
 

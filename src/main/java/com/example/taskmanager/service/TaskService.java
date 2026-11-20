@@ -16,6 +16,10 @@ import com.example.taskmanager.repository.TaskRepository;
 import com.example.taskmanager.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -29,19 +33,37 @@ import java.time.format.DateTimeFormatter;
 
 @Service
 public class TaskService {
+    private static final Logger log = LoggerFactory.getLogger(TaskService.class);
+
+    // SpEL for the task cache key; see cacheKey(). Shared by @Cacheable and @CacheEvict.
+    private static final String CACHE_KEY = "T(com.example.taskmanager.service.TaskService).cacheKey(#owner, #id)";
+
     private final TaskRepository taskRepository;
     private final OutboxRepository outboxRepository;
     private final JsonMapper jsonMapper;
     private final MeterRegistry meterRegistry;
     private final AuditService auditService;
+    private final CacheManager cacheManager;
 
     public TaskService(TaskRepository taskRepository, OutboxRepository outboxRepository,
-                       JsonMapper jsonMapper, MeterRegistry meterRegistry, AuditService auditService) {
+                       JsonMapper jsonMapper, MeterRegistry meterRegistry, AuditService auditService,
+                       CacheManager cacheManager) {
         this.taskRepository = taskRepository;
         this.outboxRepository = outboxRepository;
         this.jsonMapper = jsonMapper;
         this.meterRegistry = meterRegistry;
         this.auditService = auditService;
+        this.cacheManager = cacheManager;
+    }
+
+    /**
+     * Task cache key: {@code tenant:owner:id}. Cached reads are served from Redis without touching
+     * Postgres, so RLS can't scope them; the tenant in the key does (threat #27). Without it, the same
+     * owner name in two tenants would share entries, and a user moved to another tenant would keep
+     * being served the old tenant's tasks until the TTL expired.
+     */
+    public static String cacheKey(String owner, Long id) {
+        return TenantContext.getTenantId() + ":" + owner + ":" + id;
     }
 
     @Transactional
@@ -61,7 +83,8 @@ public class TaskService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
+    // Safe to key on the caller: update only ever loads the caller's own task (findByIdAndOwner).
+    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = CACHE_KEY)
     public TaskDto updateTask(Long id, String owner, TaskCreateDto taskDto) {
         return Timer.builder("task.operation.duration").tag("operation", "update").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -100,7 +123,7 @@ public class TaskService {
         );
     }
 
-    @Cacheable(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
+    @Cacheable(cacheNames = CacheConfig.TASKS_CACHE, key = CACHE_KEY)
     public TaskDto findTask(Long id, String owner) {
         return Timer.builder("task.operation.duration").tag("operation", "findOne").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -109,8 +132,10 @@ public class TaskService {
         });
     }
 
+    // Evicted programmatically, not via @CacheEvict: an admin can delete another user's task, and the
+    // cached entry lives under the task's owner, which is only known after the lookup. Keying on the
+    // caller (as before) evicted the admin's key and left the owner's stale copy readable (threat #27).
     @Transactional
-    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = "#owner + ':' + #id")
     public void deleteTask(Long id, String owner, boolean isAdmin) {
         Timer.builder("task.operation.duration").tag("operation", "delete").register(meterRegistry).record(() -> {
             Task task = isAdmin
@@ -125,7 +150,22 @@ public class TaskService {
                 auditService.record(AuditAction.TASK_DELETED, "task", String.valueOf(id));
             }
             taskRepository.delete(task);
+            evictCachedTask(task.getOwner(), id);
         });
+    }
+
+    // Fail open like the annotated cache operations (LoggingCacheErrorHandler only covers those):
+    // a Redis outage must not fail the delete. The entry still expires with the TTL.
+    private void evictCachedTask(String owner, Long id) {
+        String key = cacheKey(owner, id);
+        try {
+            Cache cache = cacheManager.getCache(CacheConfig.TASKS_CACHE);
+            if (cache != null) {
+                cache.evict(key);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Failed to evict task cache entry {}; it expires with the TTL", key, e);
+        }
     }
 
     private TaskDto toDto(Task task) {
