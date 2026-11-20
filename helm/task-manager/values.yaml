@@ -42,6 +42,8 @@ config:
   baseUrl: http://localhost:8080
   otlpTracingEndpoint: http://tempo:4318/v1/traces
   openaiChatModel: gpt-4o-mini
+  # Regex of proxies trusted for X-Forwarded-For (threat #16); empty = none. E.g. "10\\.244\\.\\d+\\.\\d+"
+  trustedProxies: ""
 
 # Secrets. `create: true` renders a plaintext Secret from the values below — throwaway local-dev
 # defaults, fine for `helm install`/the terraform-deploy branch. In the GitOps flow set

@@ -18,5 +18,6 @@ data:
   BASE_URL: {{ .Values.config.baseUrl | quote }}
   MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: {{ .Values.config.otlpTracingEndpoint | quote }}
   SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL: {{ .Values.config.openaiChatModel | quote }}
+  TRUSTED_PROXIES: {{ .Values.config.trustedProxies | quote }}
   # Expose the readiness/liveness health groups used by the probes.
   MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
