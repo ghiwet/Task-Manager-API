@@ -33,14 +33,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Threat #9: the resource server must reject tokens that weren't issued for this API, even when
- * they're validly signed by the right issuer. Unlike the other tests (which use the jwt() post-processor
- * and so skip decoding entirely), these send real signed Bearer tokens through the app's actual
- * Boot-built JwtDecoder. It's pointed at a test RSA key via public-key-location so the test stays
- * hermetic. Boot only picks the public-key decoder when issuer-uri is blank (otherwise it does issuer
- * discovery against the real Keycloak), so issuer-uri is cleared here; the audience validator comes from
- * the same Boot validator chain the issuer-uri decoder uses, driven by the real
- * spring.security.oauth2.resourceserver.jwt.audiences property.
+ * Threat #9: tokens not issued for this API are rejected, even when validly signed. Unlike tests using the
+ * {@code jwt()} post-processor (which skips decoding), these send real signed tokens through Boot's
+ * JwtDecoder, pointed at a test key via {@code public-key-location} to stay hermetic. Boot only builds that
+ * decoder when {@code issuer-uri} is blank, so it's cleared here; the audience check is the same validator
+ * either way, driven by the real {@code jwt.audiences} property.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -79,7 +76,7 @@ class JwtAudienceValidationTest extends AbstractIntegrationTest {
 
     @Test
     void tokenWithoutAnAudienceIsRejected() throws Exception {
-        // What myrealm issued before the audience mapper: validly signed, right issuer, no aud.
+        // What myrealm issued before the audience mapper.
         mockMvc.perform(get("/api/v1/tasks").header("Authorization", "Bearer " + token(List.of())))
                 .andExpect(status().isUnauthorized());
     }

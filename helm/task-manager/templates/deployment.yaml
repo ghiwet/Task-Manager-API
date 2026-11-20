@@ -44,8 +44,7 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-            # Actuator (probes, Prometheus scrape) on its own port; deliberately not in the Service, so
-            # the ingress can't route to it (threat #17).
+            # Actuator only; deliberately not in the Service (threat #17).
             - name: management
               containerPort: {{ .Values.managementPort }}
           envFrom:

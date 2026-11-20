@@ -186,7 +186,7 @@ class TenantIsolationTest extends AbstractIntegrationTest {
         }
     }
 
-    // Threat #52: a caller with no tenant must be refused, not run under the shared sentinel tenant.
+    // Threat #52: no tenant means refused, not the shared sentinel tenant.
     @Test
     void jwtWithoutTenantClaimIsRejectedOnTheApi() throws Exception {
         RequestPostProcessor noTenant = jwt()
@@ -220,8 +220,7 @@ class TenantIsolationTest extends AbstractIntegrationTest {
 
     @Test
     void databaseRefusesRowsInTheSentinelTenant() {
-        // The DB backstop (V10): even with the sentinel bound, so RLS WITH CHECK would pass,
-        // the CHECK constraint rejects the insert.
+        // V10 backstop: RLS WITH CHECK passes with the sentinel bound; the CHECK constraint doesn't.
         TenantContext.setTenantId(TenantContext.UNRESOLVED_TENANT);
         try {
             Task task = new Task();

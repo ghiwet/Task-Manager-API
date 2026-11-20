@@ -49,8 +49,7 @@ class OutboxAtomicityTest extends AbstractIntegrationTest {
     @Autowired
     private OutboxRepository outboxRepository;
 
-    // Services read the tenant from TenantContext; with no tenant bound they would stamp the
-    // '__unresolved__' sentinel, which V10 now forbids (threat #52). Bind a real one per test.
+    // Services stamp the bound tenant; the unbound sentinel is rejected by V10 (threat #52).
     @BeforeEach
     void bindTenant() {
         TenantContext.setTenantId("tenant-test");

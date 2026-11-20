@@ -13,8 +13,7 @@ service:
   type: ClusterIP
   port: 8080
 
-# Actuator port (health probes, /actuator/prometheus). Container-only: not exposed by the Service or
-# ingress, so actuator is unreachable from outside the cluster (threat #17).
+# Actuator port for probes and scraping; not exposed by the Service/ingress (threat #17).
 managementPort: 8091
 
 resources:

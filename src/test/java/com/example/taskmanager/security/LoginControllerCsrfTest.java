@@ -34,9 +34,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Proves the scoped CSRF fix (java/spring-disabled-csrf-protection): the cookie-session-authenticated
- * /logout route now requires a CSRF token, while the Bearer-token-only /api/** routes stay exempt --
- * and, since threat #55, that exemption is safe because a session cookie can't authenticate /api/** at all.
+ * CSRF scoping (java/spring-disabled-csrf-protection): session-authenticated routes like /logout need a
+ * CSRF token; the Bearer-only /api/** chain is exempt, which is safe because session cookies can't
+ * authenticate it at all (threat #55).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -96,19 +96,19 @@ class LoginControllerCsrfTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated());
     }
 
-    // Threat #55: /api/** is a separate STATELESS, Bearer-only chain, so a logged-in browser session
-    // (the cookie a CSRF attack rides on) must not authenticate API calls. Built as a real session
-    // holding the SecurityContext the way oauth2Login stores it -- unlike .with(oauth2Login()), which
-    // injects the authentication directly and would bypass the session lookup this test is about.
+    /**
+     * Threat #55: a logged-in browser session must not authenticate the API. Uses a real session, since
+     * {@code .with(oauth2Login())} injects the authentication and would bypass the session lookup under test.
+     */
     @Test
     void browserSessionCookieDoesNotAuthenticateTheApi() throws Exception {
         MockHttpSession session = loggedInBrowserSession();
 
-        // The session is genuinely logged in for the browser chain...
+        // Valid for the browser chain...
         mockMvc.perform(get("/dashboard").session(session))
                 .andExpect(status().isOk());
 
-        // ...but carries no authority on the API, with or without a CSRF token.
+        // ...but not for the API, CSRF token or not.
         String body = jsonMapper.writeValueAsString(new TaskCreateDto("csrf ride", "desc", false));
         mockMvc.perform(post("/api/v1/tasks").session(session).contentType("application/json").content(body))
                 .andExpect(status().isUnauthorized());
