@@ -74,7 +74,8 @@ public class WebSecurityConfig {
     public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http, Environment environment) throws Exception {
         http
                 .securityMatcher(managementRequests(environment))
-                .csrf(csrf -> csrf.disable()) // stateless, read-only endpoints, no cookie auth
+                // Exempt, not disabled: stateless, read-only endpoints, no cookie auth.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(managementRequests(environment)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(this::securityHeaders)
                 .authorizeHttpRequests(auth -> auth
@@ -99,7 +100,8 @@ public class WebSecurityConfig {
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/**")
-                .csrf(csrf -> csrf.disable()) // safe: stateless, Authorization header only
+                // Exempt, not disabled: stateless, Authorization header only (no cookies to forge).
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(Customizer.withDefaults())
                 .headers(this::securityHeaders)
