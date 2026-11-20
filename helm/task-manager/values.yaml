@@ -13,6 +13,10 @@ service:
   type: ClusterIP
   port: 8080
 
+# Actuator port (health probes, /actuator/prometheus). Container-only: not exposed by the Service or
+# ingress, so actuator is unreachable from outside the cluster (threat #17).
+managementPort: 8091
+
 resources:
   requests:
     cpu: 250m
@@ -55,7 +59,7 @@ secrets:
   keycloakClientSecret: secret123
   openaiApiKey: ""
 
-# Probes hit Spring Boot's actuator health groups.
+# Probes hit Spring Boot's actuator health groups on the management port.
 probes:
   startup:
     failureThreshold: 30   # ~5 min for Postgres/Kafka/Keycloak to become reachable

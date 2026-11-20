@@ -44,6 +44,10 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            # Actuator (probes, Prometheus scrape) on its own port; deliberately not in the Service, so
+            # the ingress can't route to it (threat #17).
+            - name: management
+              containerPort: {{ .Values.managementPort }}
           envFrom:
             - configMapRef:
                 name: {{ include "task-manager.fullname" . }}-config
@@ -55,23 +59,25 @@ spec:
             # envFrom on a name collision, so this is a safe override regardless of defaults.
             - name: SPRING_FLYWAY_ENABLED
               value: "false"
+            - name: MANAGEMENT_SERVER_PORT
+              value: {{ .Values.managementPort | quote }}
           # Startup probe absorbs the wait for Postgres/Kafka/Keycloak so the pod isn't
           # killed while dependencies come up; readiness/liveness use the app's health groups.
           startupProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: http
+              port: management
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: http
+              port: management
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: http
+              port: management
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

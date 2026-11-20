@@ -102,7 +102,7 @@ curl -s -X POST http://localhost:8080/api/v1/assistant/query \
 ## 6. Custom metrics (Prometheus)
 
 ```bash
-curl -s http://localhost:8080/actuator/prometheus | grep -E "^task_operations_total|^outbox_published_total"
+curl -s http://localhost:8091/actuator/prometheus | grep -E "^task_operations_total|^outbox_published_total"
 ```
 ```
 outbox_published_total{application="task-manager-api",type="CREATED"} 3.0

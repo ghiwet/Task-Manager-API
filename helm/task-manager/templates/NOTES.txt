@@ -6,9 +6,12 @@ Redis, Elasticsearch, and Keycloak are reachable at the addresses in values (con
 Check status:
   kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
 
-Port-forward and hit the API / health:
+Port-forward and hit the API:
   kubectl port-forward svc/{{ include "task-manager.fullname" . }} 8080:{{ .Values.service.port }}
-  curl http://localhost:8080/actuator/health
+
+Actuator is on the pod's management port, which the Service does not expose:
+  kubectl port-forward deploy/{{ include "task-manager.fullname" . }} {{ .Values.managementPort }}:{{ .Values.managementPort }}
+  curl http://localhost:{{ .Values.managementPort }}/actuator/health
 
 Swagger UI:
   http://localhost:8080/swagger-ui/index.html

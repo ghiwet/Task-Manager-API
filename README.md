@@ -211,7 +211,10 @@ helm install tm helm/task-manager \
   --set image.tag=1.0.1 \
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
-The Deployment has actuator startup/readiness/liveness probes and resource limits. Optional extras:
+The Deployment has actuator startup/readiness/liveness probes and resource limits. Actuator runs on its own
+**management port (8091)**, which the Service and ingress don't expose: only `health`, `info` and
+`prometheus` are enabled, anonymous callers see the health status without component details, and the
+API port answers `/actuator/**` with 404/401. Probes and the Prometheus scrape target 8091. Optional extras:
 `--set autoscaling.enabled=true` (CPU-based HPA) and `--set ingress.enabled=true --set ingress.host=...`.
 Validate without a cluster: `helm lint helm/task-manager` and `helm template tm helm/task-manager`.
 
@@ -226,8 +229,8 @@ HOST_IP=$(ipconfig getifaddr en0)   # macOS; use `hostname -I` on Linux
 helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082
 
 kubectl get pods -w                                  # wait for 1/1 Ready
-kubectl port-forward svc/tm-task-manager 8080:8080
-curl http://localhost:8080/actuator/health           # {"status":"UP"}
+kubectl port-forward deploy/tm-task-manager 8091:8091   # actuator: management port, not in the Service
+curl http://localhost:8091/actuator/health           # {"status":"UP"}
 
 helm uninstall tm && kind delete cluster --name tm   # cleanup
 ```
@@ -262,8 +265,9 @@ terraform apply -auto-approve
 kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy application/task-manager --timeout=5m
 
 # reach it (the command is also printed as the `app_port_forward` output)
-kubectl -n task-manager port-forward svc/task-manager-task-manager 8080:8080
-curl http://localhost:8080/actuator/health          # {"status":"UP"}
+kubectl -n task-manager port-forward svc/task-manager-task-manager 8080:8080        # the API
+kubectl -n task-manager port-forward deploy/task-manager-task-manager 8091:8091     # actuator (not in the Service)
+curl http://localhost:8091/actuator/health          # {"status":"UP"}
 
 # tear it all down (cluster included)
 terraform destroy -auto-approve
