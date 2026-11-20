@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -25,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -179,6 +181,54 @@ class TenantIsolationTest extends AbstractIntegrationTest {
         TenantContext.setTenantId(TENANT_A);
         try {
             assertTrue(taskRepository.findAll().stream().anyMatch(t -> t.getTitle().equals("a-only")));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    // Threat #52: a caller with no tenant must be refused, not run under the shared sentinel tenant.
+    @Test
+    void jwtWithoutTenantClaimIsRejectedOnTheApi() throws Exception {
+        RequestPostProcessor noTenant = jwt()
+                .jwt(j -> j.subject("drifter").claim("preferred_username", "drifter"))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .with(noTenant)
+                        .contentType("application/json")
+                        .content(jsonMapper.writeValueAsString(new TaskCreateDto("orphan", "desc", false))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/tasks").with(noTenant))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tenantClaimEqualToTheSentinelIsRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks")
+                        .with(user("drifter", TenantContext.UNRESOLVED_TENANT))
+                        .contentType("application/json")
+                        .content(jsonMapper.writeValueAsString(new TaskCreateDto("orphan", "desc", false))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedApiRequestIsStillUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/tasks"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void databaseRefusesRowsInTheSentinelTenant() {
+        // The DB backstop (V10): even with the sentinel bound, so RLS WITH CHECK would pass,
+        // the CHECK constraint rejects the insert.
+        TenantContext.setTenantId(TenantContext.UNRESOLVED_TENANT);
+        try {
+            Task task = new Task();
+            task.setTitle("sentinel");
+            task.setOwner("drifter");
+            task.setTenantId(TenantContext.UNRESOLVED_TENANT);
+            assertThrows(DataIntegrityViolationException.class, () -> taskRepository.saveAndFlush(task));
         } finally {
             TenantContext.clear();
         }

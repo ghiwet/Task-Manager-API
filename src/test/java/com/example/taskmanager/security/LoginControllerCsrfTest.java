@@ -80,7 +80,7 @@ class LoginControllerCsrfTest extends AbstractIntegrationTest {
     @Test
     void apiRequestWithoutCsrfTokenStillSucceeds() throws Exception {
         mockMvc.perform(post("/api/v1/tasks")
-                        .with(jwt().jwt(j -> j.subject("csrf-test-user").claim("preferred_username", "csrf-test-user"))
+                        .with(jwt().jwt(j -> j.subject("csrf-test-user").claim("preferred_username", "csrf-test-user").claim("tenant_id", "tenant-test"))
                                 .authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER")))
                         .contentType("application/json")
                         .content(jsonMapper.writeValueAsString(new TaskCreateDto("csrf exempt check", "desc", false))))

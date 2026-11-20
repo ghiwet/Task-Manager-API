@@ -1,5 +1,8 @@
 package com.example.taskmanager.service;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import com.example.taskmanager.tenant.TenantContext;
 import com.example.taskmanager.AbstractIntegrationTest;
 import com.example.taskmanager.TestcontainersConfig;
 import com.example.taskmanager.config.CacheConfig;
@@ -40,6 +43,18 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private CacheManager cacheManager;
+
+    // Services read the tenant from TenantContext; with no tenant bound they would stamp the
+    // '__unresolved__' sentinel, which V10 now forbids (threat #52). Bind a real one per test.
+    @BeforeEach
+    void bindTenant() {
+        TenantContext.setTenantId("tenant-test");
+    }
+
+    @AfterEach
+    void clearTenant() {
+        TenantContext.clear();
+    }
 
     @Test
     void readPopulatesCacheAndWriteEvicts() {

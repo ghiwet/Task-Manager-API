@@ -467,6 +467,13 @@ The tenant comes from a custom `tenant_id` claim, added in Keycloak via a user a
 mapper (see `keycloak/realm-export.json`). `current_setting('app.current_tenant', true)` returns `NULL`
 when unset, so a missing tenant context matches **no rows** (default deny) rather than erroring.
 
+A missing tenant also **fails closed** for writes. `TenantFilter` rejects any authenticated
+`/api/**` request it can't resolve a tenant for with **403**. That covers a JWT without the
+claim and an `oauth2Login` browser session, which carries no JWT. Without this, those callers
+would run under the internal `__unresolved__` sentinel: reads would see nothing, but writes
+under it would succeed. As a database backstop, `V10` adds `CHECK (tenant_id <> '__unresolved__')`
+to every tenant-scoped table, so no code path can ever write a row into that shared bucket.
+
 **Two database roles** make this airtight (RLS does not apply to a table's owner or a superuser):
 
 | Role | Used by | Privilege | RLS |
