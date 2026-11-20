@@ -47,9 +47,11 @@ class ActuatorExposureTest extends AbstractIntegrationTest {
         for (String path : new String[]{"/actuator/prometheus", "/actuator/health"}) {
             assertThat(get(apiPort, path).statusCode()).as("API port must not serve %s", path).isEqualTo(404);
         }
-        // Everything else is denied before routing.
+        // Everything else gets a plain 403 (no redirect to /login).
         for (String path : new String[]{"/actuator/metrics", "/actuator/env", "/actuator/heapdump"}) {
-            assertThat(get(apiPort, path).statusCode()).as("API port must not serve %s", path).isNotEqualTo(200);
+            HttpResponse<String> response = get(apiPort, path);
+            assertThat(response.statusCode()).as("API port must not serve %s", path).isEqualTo(403);
+            assertThat(response.headers().firstValue("Location")).as(path).isEmpty();
         }
     }
 
