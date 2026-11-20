@@ -376,6 +376,14 @@ Tests use Testcontainers (PostgreSQL) and EmbeddedKafka — no external services
 > (OWASP Threat Dragon format). [`docs/case-studies.md`](docs/case-studies.md) writes up two of the
 > real bugs found and fixed while hardening Kafka — found it, investigated, fixed, verified.
 
+### 🎫 JWT Audience
+
+The resource server checks signature, expiry, issuer **and audience**: a token must list `task-manager-api`
+in `aud` (`spring.security.oauth2.resourceserver.jwt.audiences`, env `JWT_AUDIENCE`). Without that check,
+a token the realm issued to *any* client — another app, or a built-in client like `admin-cli` — would be
+accepted. Keycloak adds the audience through an `oidc-audience-mapper` on the `springboot-app` and
+`taskmanager-spa` clients (`keycloak/realm-export.json`); a client without the mapper gets `401`.
+
 ### 🚦 Rate Limiting
 
 Requests are throttled with [Bucket4j](https://bucket4j.com/) token buckets via a `RateLimitFilter` placed
