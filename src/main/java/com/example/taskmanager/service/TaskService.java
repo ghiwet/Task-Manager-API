@@ -20,12 +20,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
@@ -35,7 +36,7 @@ import java.time.format.DateTimeFormatter;
 public class TaskService {
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
 
-    // SpEL for the task cache key; see cacheKey(). Shared by @Cacheable and @CacheEvict.
+    // SpEL for @Cacheable; see cacheKey().
     private static final String CACHE_KEY = "T(com.example.taskmanager.service.TaskService).cacheKey(#owner, #id)";
 
     private final TaskRepository taskRepository;
@@ -57,10 +58,8 @@ public class TaskService {
     }
 
     /**
-     * Task cache key: {@code tenant:owner:id}. Cached reads are served from Redis without touching
-     * Postgres, so RLS can't scope them; the tenant in the key does (threat #27). Without it, the same
-     * owner name in two tenants would share entries, and a user moved to another tenant would keep
-     * being served the old tenant's tasks until the TTL expired.
+     * Task cache key: {@code tenant:owner:id}. Cached reads never reach Postgres, so RLS can't scope them;
+     * the tenant in the key does (threat #27).
      */
     public static String cacheKey(String owner, Long id) {
         return TenantContext.getTenantId() + ":" + owner + ":" + id;
@@ -83,8 +82,6 @@ public class TaskService {
     }
 
     @Transactional
-    // Safe to key on the caller: update only ever loads the caller's own task (findByIdAndOwner).
-    @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, key = CACHE_KEY)
     public TaskDto updateTask(Long id, String owner, TaskCreateDto taskDto) {
         return Timer.builder("task.operation.duration").tag("operation", "update").register(meterRegistry).record(() -> {
             Task task = taskRepository.findByIdAndOwner(id, owner)
@@ -106,6 +103,7 @@ public class TaskService {
                     : TaskEventType.UPDATED;
             meterRegistry.counter("task.operations.total", "type", eventType.name()).increment();
             publishEvent(savedTask, eventType);
+            evictAfterCommit(savedTask.getOwner(), id);
             return toDto(savedTask);
         });
     }
@@ -116,7 +114,7 @@ public class TaskService {
         );
     }
 
-    // Every task the caller's tenant can see (RLS-scoped), regardless of owner — for admins.
+    // Admin view: every task in the caller's tenant (RLS-scoped), any owner.
     public Page<TaskDto> findAllTasks(Pageable pageable) {
         return Timer.builder("task.operation.duration").tag("operation", "findAllAdmin").register(meterRegistry).record(() ->
                 taskRepository.findAll(pageable).map(this::toDto)
@@ -132,9 +130,10 @@ public class TaskService {
         });
     }
 
-    // Evicted programmatically, not via @CacheEvict: an admin can delete another user's task, and the
-    // cached entry lives under the task's owner, which is only known after the lookup. Keying on the
-    // caller (as before) evicted the admin's key and left the owner's stale copy readable (threat #27).
+    /**
+     * Deletes a task; admins may delete any task in their tenant. The cache entry is evicted under the
+     * task's actual owner, not the caller, so an admin delete clears the owner's copy (threat #27).
+     */
     @Transactional
     public void deleteTask(Long id, String owner, boolean isAdmin) {
         Timer.builder("task.operation.duration").tag("operation", "delete").register(meterRegistry).record(() -> {
@@ -145,19 +144,35 @@ public class TaskService {
                             .orElseThrow(() -> new TaskNotFoundException("Task with ID " + id + " not found"));
             meterRegistry.counter("task.operations.total", "type", TaskEventType.DELETED.name()).increment();
             publishEvent(task, TaskEventType.DELETED);
-            // Audit only the cross-user case: an admin deleting their own task isn't the risk here.
+            // Audit only cross-user deletes.
             if (isAdmin && !task.getOwner().equals(owner)) {
                 auditService.record(AuditAction.TASK_DELETED, "task", String.valueOf(id));
             }
             taskRepository.delete(task);
-            evictCachedTask(task.getOwner(), id);
+            evictAfterCommit(task.getOwner(), id);
         });
     }
 
-    // Fail open like the annotated cache operations (LoggingCacheErrorHandler only covers those):
-    // a Redis outage must not fail the delete. The entry still expires with the TTL.
-    private void evictCachedTask(String owner, Long id) {
+    /**
+     * Evicts the task's cache entry once the surrounding transaction commits. Evicting before commit lets a
+     * concurrent read re-cache the old row, which then stays stale until the TTL.
+     */
+    private void evictAfterCommit(String owner, Long id) {
         String key = cacheKey(owner, id);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    evict(key);
+                }
+            });
+        } else {
+            evict(key);
+        }
+    }
+
+    // Fails open like the annotated cache ops: a Redis outage mustn't fail the write.
+    private void evict(String key) {
         try {
             Cache cache = cacheManager.getCache(CacheConfig.TASKS_CACHE);
             if (cache != null) {
@@ -181,8 +196,7 @@ public class TaskService {
         return dto;
     }
 
-    // Stage the event in the outbox within the same transaction as the task change, so the two
-    // commit atomically; the OutboxRelay publishes it to Kafka afterwards (no dual-write loss).
+    // Staged in the outbox in the same transaction, so task change and event commit atomically.
     private void publishEvent(Task task, TaskEventType eventType) {
         TaskEvent event = TaskEvent.builder()
                 .taskId(task.getId())

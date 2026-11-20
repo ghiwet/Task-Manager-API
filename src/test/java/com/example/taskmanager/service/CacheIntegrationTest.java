@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 
@@ -48,8 +49,10 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
-    // Services read the tenant from TenantContext; with no tenant bound they would stamp the
-    // '__unresolved__' sentinel, which V10 now forbids (threat #52). Bind a real one per test.
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    // Services stamp the bound tenant; the unbound sentinel is rejected by V10 (threat #52).
     @BeforeEach
     void bindTenant() {
         TenantContext.setTenantId(TENANT);
@@ -79,8 +82,7 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
                 .as("next read reflects the update").isEqualTo("updated");
     }
 
-    // Threat #27: the entry lives under the owner's key, so an admin deleting someone else's task
-    // must evict that key, not the admin's own. Previously the owner kept reading the deleted task.
+    // Threat #27: an admin delete must evict the owner's entry, not the admin's.
     @WithMockUser(username = "cache-admin", roles = "ADMIN")
     @Test
     void adminDeleteEvictsTheOwnersEntry() {
@@ -102,7 +104,7 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(TaskNotFoundException.class);
     }
 
-    // The same owner name in another tenant must not hit this tenant's entry.
+    // Same owner name in another tenant must miss.
     @Test
     void cacheKeyIsScopedByTenant() {
         TaskDto created = taskService.createTask(new TaskCreateDto("tenant-scoped", "desc", false), OWNER);
@@ -117,5 +119,24 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
         assertThat(TaskService.cacheKey(OWNER, id)).isEqualTo("tenant-other:" + OWNER + ":" + id);
         assertThat(cache.get(TaskService.cacheKey(OWNER, id)))
                 .as("another tenant's key for the same owner/id is a miss").isNull();
+    }
+
+    // Evicting before commit would let a concurrent read re-cache the old row.
+    @Test
+    void evictionWaitsForCommit() {
+        TaskDto created = taskService.createTask(new TaskCreateDto("deferred", "desc", false), OWNER);
+        Long id = created.getId();
+        Cache cache = cacheManager.getCache(CacheConfig.TASKS_CACHE);
+        String key = TENANT + ":" + OWNER + ":" + id;
+
+        taskService.findTask(id, OWNER);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(cache.get(key)).isNotNull());
+
+        transactionTemplate.executeWithoutResult(status -> {
+            taskService.updateTask(id, OWNER, new TaskCreateDto("changed", "desc", false));
+            assertThat(cache.get(key)).as("still cached until commit").isNotNull();
+        });
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(cache.get(key)).as("evicted after commit").isNull());
     }
 }
