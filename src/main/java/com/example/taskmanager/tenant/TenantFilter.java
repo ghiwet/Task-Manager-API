@@ -22,11 +22,12 @@ import java.io.IOException;
  * tenant leakage across pooled request threads.
  *
  * <p>Fails closed on the API (threat #52): an authenticated {@code /api/**} request with no
- * resolvable tenant -- a JWT missing the claim, or an oauth2Login browser session, which carries
- * no JWT -- is rejected with 403 instead of running under {@link TenantContext#UNRESOLVED_TENANT}.
- * That sentinel only default-denies reads; if writes were allowed under it, every tenant-less
- * caller would share one real, writable tenant. Unauthenticated requests pass through so Spring
- * Security still answers them with 401.
+ * resolvable tenant -- e.g. a JWT missing the claim -- is rejected with 403 instead of running under
+ * {@link TenantContext#UNRESOLVED_TENANT}. That sentinel only default-denies reads; if writes were
+ * allowed under it, every tenant-less caller would share one real, writable tenant. Unauthenticated
+ * requests pass through so Spring Security still answers them with 401. (Browser sessions don't reach
+ * here authenticated: since threat #55, /api/** is a stateless Bearer-only chain, so a session gets 401
+ * first. The check stays as defence in depth for any non-JWT authentication added later.)
  */
 @Component
 public class TenantFilter extends OncePerRequestFilter {

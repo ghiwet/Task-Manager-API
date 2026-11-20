@@ -9,11 +9,14 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
@@ -43,30 +46,49 @@ public class WebSecurityConfig {
         this.tenantFilter = tenantFilter;
     }
 
+    /**
+     * The REST API: Bearer-token-only and stateless (threat #55). It has no oauth2Login and never reads
+     * the HTTP session, so a browser's JSESSIONID cookie -- the ambient credential CSRF abuses --
+     * authenticates nothing here; a request without a valid Bearer token gets 401. With no cookie-based
+     * authentication on this chain, CSRF protection has nothing to protect, so it is disabled here only.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                // CodeQL java/spring-disabled-csrf-protection: CSRF only matters for the
-                // cookie-session-authenticated browser flow (oauth2Login, /dashboard, /logout).
-                // The REST API under /api/** is Bearer-token-only -- no ambient credential a
-                // browser attaches automatically -- so CSRF protection there is a no-op at best.
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+                .securityMatcher("/api/**")
+                // CodeQL java/spring-disabled-csrf-protection: safe because this chain is STATELESS and
+                // authenticates only via the Authorization header (no session, no cookies).
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(Customizer.withDefaults())
-                .headers(headers -> headers
-                        .httpStrictTransportSecurity(hsts -> hsts
-                                .includeSubDomains(true)
-                                .preload(true)
-                                .maxAgeInSeconds(31536000))
-                        .contentTypeOptions(Customizer.withDefaults())
-                        .frameOptions(frame -> frame.deny())
-                        .contentSecurityPolicy(csp -> csp.policyDirectives(
-                                "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
-                                "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; form-action 'self'"))
-                        .referrerPolicy(referrer -> referrer
-                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
-                        .permissionsPolicyHeader(permissions -> permissions
-                                .policy("camera=(), microphone=(), geolocation=()")))
+                .headers(this::securityHeaders)
                 .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class)
+                .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/v1/tasks/**").hasAuthority("ROLE_USER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/tasks/**").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/api/v1/assistant/**").hasAuthority("ROLE_USER")
+                        .anyRequest().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                        )
+                );
+
+        return http.build();
+    }
+
+    /**
+     * Everything else: the cookie-session browser flow (oauth2Login, /dashboard, /logout), Swagger UI and
+     * actuator. CSRF protection is fully on here; there is no Bearer authentication on this chain.
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain browserSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .headers(this::securityHeaders)
                 .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -74,9 +96,6 @@ public class WebSecurityConfig {
                         // internal management port (management.server.port), not the API port. The
                         // Security filter chain applies to that port too, hence these rules (threat #17).
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/tasks/**").hasAuthority("ROLE_USER")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/tasks/**").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
-                        .requestMatchers("/api/v1/assistant/**").hasAuthority("ROLE_USER")
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
@@ -84,16 +103,28 @@ public class WebSecurityConfig {
                         .defaultSuccessUrl("/dashboard", true)
                         .permitAll()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter())
-                        )
-                )
                 .logout(logout -> logout
                         .logoutSuccessUrl("/login?logout")
                 );
 
         return http.build();
+    }
+
+    private void securityHeaders(HeadersConfigurer<HttpSecurity> headers) {
+        headers
+                .httpStrictTransportSecurity(hsts -> hsts
+                        .includeSubDomains(true)
+                        .preload(true)
+                        .maxAgeInSeconds(31536000))
+                .contentTypeOptions(Customizer.withDefaults())
+                .frameOptions(frame -> frame.deny())
+                .contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+                        "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; form-action 'self'"))
+                .referrerPolicy(referrer -> referrer
+                        .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                .permissionsPolicyHeader(permissions -> permissions
+                        .policy("camera=(), microphone=(), geolocation=()"));
     }
 
     @Bean

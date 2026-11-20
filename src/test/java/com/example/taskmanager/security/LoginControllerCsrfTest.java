@@ -14,6 +14,14 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,7 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Proves the scoped CSRF fix (java/spring-disabled-csrf-protection): the cookie-session-authenticated
- * /logout route now requires a CSRF token, while the Bearer-token-only /api/** routes stay exempt.
+ * /logout route now requires a CSRF token, while the Bearer-token-only /api/** routes stay exempt --
+ * and, since threat #55, that exemption is safe because a session cookie can't authenticate /api/** at all.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -85,5 +94,47 @@ class LoginControllerCsrfTest extends AbstractIntegrationTest {
                         .contentType("application/json")
                         .content(jsonMapper.writeValueAsString(new TaskCreateDto("csrf exempt check", "desc", false))))
                 .andExpect(status().isCreated());
+    }
+
+    // Threat #55: /api/** is a separate STATELESS, Bearer-only chain, so a logged-in browser session
+    // (the cookie a CSRF attack rides on) must not authenticate API calls. Built as a real session
+    // holding the SecurityContext the way oauth2Login stores it -- unlike .with(oauth2Login()), which
+    // injects the authentication directly and would bypass the session lookup this test is about.
+    @Test
+    void browserSessionCookieDoesNotAuthenticateTheApi() throws Exception {
+        MockHttpSession session = loggedInBrowserSession();
+
+        // The session is genuinely logged in for the browser chain...
+        mockMvc.perform(get("/dashboard").session(session))
+                .andExpect(status().isOk());
+
+        // ...but carries no authority on the API, with or without a CSRF token.
+        String body = jsonMapper.writeValueAsString(new TaskCreateDto("csrf ride", "desc", false));
+        mockMvc.perform(post("/api/v1/tasks").session(session).contentType("application/json").content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/tasks").session(session).with(csrf()).contentType("application/json").content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/tasks").session(session))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void apiDoesNotCreateSessions() throws Exception {
+        var result = mockMvc.perform(get("/api/v1/tasks")
+                        .with(jwt().jwt(j -> j.subject("stateless-user").claim("preferred_username", "stateless-user").claim("tenant_id", "tenant-test"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertTrue(result.getRequest().getSession(false) == null, "the API chain must not create an HTTP session");
+    }
+
+    private static MockHttpSession loggedInBrowserSession() {
+        var user = new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")),
+                Map.of("sub", "browser-user", "name", "Browser User"), "sub");
+        var authentication = new OAuth2AuthenticationToken(user, user.getAuthorities(), "keycloak");
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+                new SecurityContextImpl(authentication));
+        return session;
     }
 }

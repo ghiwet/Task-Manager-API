@@ -455,6 +455,17 @@ Every response sets defensive HTTP headers via the Spring Security `headers()` D
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 
+### 🍪 CSRF & Two Filter Chains
+
+Security is split into two `SecurityFilterChain`s so browser cookies can never authenticate the API:
+
+- **`/api/**`**: stateless and Bearer-only (JWT resource server, `SessionCreationPolicy.STATELESS`, no
+  `oauth2Login`). It never reads or creates an HTTP session, so a logged-in browser's `JSESSIONID`, the
+  credential a CSRF attack rides on, gets `401` here. CSRF protection is off on this chain only, because
+  it has no cookie-based authentication to protect.
+- **Everything else** (`oauth2Login`, `/dashboard`, `/logout`, Swagger UI, actuator): session-based with
+  CSRF protection **on**.
+
 ### ✅ Input Validation
 
 Registration binds a dedicated `UserRegistrationDto` (not the raw entity), preventing mass-assignment of `id`,
