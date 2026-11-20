@@ -18,6 +18,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * Bucket4j rate limiting, with buckets in Redis so limits are shared across replicas. Authenticated
+ * callers are keyed per user (with a stricter bucket for the AI assistant and registration); anonymous
+ * callers per client IP. Fails open if Redis is unavailable. Placed in the api and browser chains only.
+ */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -44,21 +49,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean authenticated = auth != null && auth.isAuthenticated()
                 && !"anonymousUser".equals(auth.getPrincipal());
+        String path = RequestPaths.withinApplication(request);
 
         String key;
         String keyType;
         int limit;
 
-        if (authenticated && isAssistantEndpoint(request)) {
-            // Separate, stricter bucket for the costly AI endpoint (own key so it doesn't share
-            // the general per-user allowance).
-            key = "assistant:" + auth.getName();
+        if (authenticated && isAssistantEndpoint(path)) {
+            key = "assistant:" + auth.getName(); // own bucket for the costly AI endpoint
             keyType = "assistant";
             limit = properties.getAssistantRequestsPerMinute();
         } else if (authenticated) {
             key = "user:" + auth.getName();
             keyType = "user";
-            limit = isRegistrationEndpoint(request)
+            limit = isRegistrationEndpoint(request, path)
                     ? properties.getRegistrationRequestsPerMinute()
                     : properties.getAuthenticatedRequestsPerMinute();
         } else {
@@ -71,10 +75,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         try {
             probe = backend.tryConsume(key, limit);
         } catch (Exception ex) {
-            // Fail open: don't block traffic if the rate-limit backend (Redis) is unavailable.
             log.warn("Rate limit backend unavailable ({}); allowing request", ex.getMessage());
             meterRegistry.counter("rate.limit.backend.error.total").increment();
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, response); // fail open
             return;
         }
 
@@ -83,7 +86,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } else {
             long retryAfterSeconds = Math.max(1, probe.getNanosToWaitForRefill() / 1_000_000_000);
-            meterRegistry.counter("rate.limit.exceeded.total", "key_type", keyType, "endpoint", endpointGroup(request)).increment();
+            meterRegistry.counter("rate.limit.exceeded.total",
+                    "key_type", keyType, "endpoint", endpointGroup(request, path)).increment();
 
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
@@ -96,36 +100,35 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    // Bounded tag value for the exceeded counter. The raw URI is client-controlled, so tagging with it let
-    // a throttled caller mint a new meter (and Prometheus series) per random path (threat #53). The route
-    // template isn't available yet either: this filter runs in the security chain, before Spring MVC
-    // matches a handler.
-    private String endpointGroup(HttpServletRequest request) {
-        if (isAssistantEndpoint(request)) {
+    /**
+     * Bounded tag value for the exceeded counter. Never the raw URI: it's client-controlled, so a throttled
+     * caller could mint a meter per random path (threat #53). The route template isn't known yet either,
+     * since this filter runs before Spring MVC matches a handler.
+     */
+    private static String endpointGroup(HttpServletRequest request, String path) {
+        if (isAssistantEndpoint(path)) {
             return "assistant";
         }
-        if (isRegistrationEndpoint(request)) {
+        if (isRegistrationEndpoint(request, path)) {
             return "register";
         }
-        return request.getRequestURI().startsWith("/api/") ? "api" : "other";
+        return path.startsWith("/api/") ? "api" : "other";
     }
 
-    private boolean isRegistrationEndpoint(HttpServletRequest request) {
-        return "POST".equalsIgnoreCase(request.getMethod())
-                && "/api/v1/users/register".equals(request.getRequestURI());
+    private static boolean isRegistrationEndpoint(HttpServletRequest request, String path) {
+        return "POST".equalsIgnoreCase(request.getMethod()) && "/api/v1/users/register".equals(path);
     }
 
-    private boolean isAssistantEndpoint(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/api/v1/assistant/");
+    private static boolean isAssistantEndpoint(String path) {
+        return path.startsWith("/api/v1/assistant/");
     }
 
-    // Never read X-Forwarded-For here: it is client-controlled, and keying on it let an anonymous
-    // caller rotate the header for a fresh bucket per request (threat #16). With
-    // server.forward-headers-strategy=native, Tomcat's RemoteIpValve has already resolved the
-    // client address, trusting X-Forwarded-For only from server.tomcat.remoteip.internal-proxies
-    // and taking the right-most untrusted hop, so getRemoteAddr() is the real peer or client.
-    private String resolveClientIp(HttpServletRequest request) {
+    /**
+     * The client IP as resolved by Tomcat's RemoteIpValve ({@code server.forward-headers-strategy=native}),
+     * which honours X-Forwarded-For only from configured trusted proxies. Never read the header here: it's
+     * client-controlled, and rotating it would buy a fresh bucket per request (threat #16).
+     */
+    private static String resolveClientIp(HttpServletRequest request) {
         return request.getRemoteAddr();
     }
-
 }

@@ -37,6 +37,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext
 class RateLimitFilterTest extends AbstractIntegrationTest {
 
+    // A public, rate-limited page on the browser chain.
+    private static final String ANONYMOUS_PATH = "/login";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -68,19 +71,17 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
                 .andExpect(header().exists("X-Rate-Limit-Remaining"));
     }
 
-    // Threat #16: anonymous callers are keyed by client IP. Rotating X-Forwarded-For must not buy a
-    // fresh bucket per request; the filter keys on the resolved remote address only (in production
-    // Tomcat's RemoteIpValve resolves it, trusting the header only from configured proxies).
+    // Threat #16: rotating X-Forwarded-For must not buy a fresh anonymous bucket.
     @Test
     void anonymousCallerCannotDodgeTheLimitByRotatingXForwardedFor() throws Exception {
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/actuator/health")
+            mockMvc.perform(get(ANONYMOUS_PATH)
                             .with(fromPeer("203.0.113.7"))
                             .header("X-Forwarded-For", randomIp()))
                     .andExpect(result -> assertNotEquals(429, result.getResponse().getStatus()));
         }
 
-        mockMvc.perform(get("/actuator/health")
+        mockMvc.perform(get(ANONYMOUS_PATH)
                         .with(fromPeer("203.0.113.7"))
                         .header("X-Forwarded-For", randomIp()))
                 .andExpect(status().isTooManyRequests());
@@ -89,21 +90,29 @@ class RateLimitFilterTest extends AbstractIntegrationTest {
     @Test
     void distinctAnonymousPeersGetSeparateBuckets() throws Exception {
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/actuator/health").with(fromPeer("198.51.100.1")))
+            mockMvc.perform(get(ANONYMOUS_PATH).with(fromPeer("198.51.100.1")))
                     .andExpect(result -> assertNotEquals(429, result.getResponse().getStatus()));
         }
-        mockMvc.perform(get("/actuator/health").with(fromPeer("198.51.100.2")))
+        mockMvc.perform(get(ANONYMOUS_PATH).with(fromPeer("198.51.100.2")))
                 .andExpect(result -> assertNotEquals(429, result.getResponse().getStatus()));
     }
 
-    // Threat #53: a throttled caller hitting many distinct paths must not create a meter per path.
+    // Probes share a node IP; throttling them would fail readiness and restart pods.
+    @Test
+    void actuatorIsNeverRateLimited() throws Exception {
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(get("/actuator/health").with(fromPeer("192.0.2.10")))
+                    .andExpect(result -> assertNotEquals(429, result.getResponse().getStatus()));
+        }
+    }
+
+    // Threat #53: random paths from a throttled caller must not create a meter each.
     @Test
     void throttledRequestsToRandomPathsDoNotMintNewMeters() throws Exception {
         String peer = "192.0.2.77";
-        // Other tests also throttle anonymous /actuator requests into the same series; measure the delta.
-        double before = exceededCount("ip", "other");
+        double before = exceededCount("ip", "other"); // other tests add to this series too
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/actuator/health").with(fromPeer(peer)));
+            mockMvc.perform(get(ANONYMOUS_PATH).with(fromPeer(peer)));
         }
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(get("/probe/" + UUID.randomUUID()).with(fromPeer(peer)))

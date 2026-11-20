@@ -16,18 +16,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * Resolves the tenant from the authenticated JWT's {@code tenant_id} claim and binds it to
- * {@link TenantContext} for the duration of the request. Runs after the bearer token filter so
- * the authentication is already established. Always clears the context afterwards to prevent
- * tenant leakage across pooled request threads.
+ * Binds the JWT's {@code tenant_id} claim to {@link TenantContext} for the request and always clears it
+ * afterwards, so no tenant leaks across pooled threads. Runs in the {@code /api/**} chain only, after the
+ * bearer token filter.
  *
- * <p>Fails closed on the API (threat #52): an authenticated {@code /api/**} request with no
- * resolvable tenant -- e.g. a JWT missing the claim -- is rejected with 403 instead of running under
- * {@link TenantContext#UNRESOLVED_TENANT}. That sentinel only default-denies reads; if writes were
- * allowed under it, every tenant-less caller would share one real, writable tenant. Unauthenticated
- * requests pass through so Spring Security still answers them with 401. (Browser sessions don't reach
- * here authenticated: since threat #55, /api/** is a stateless Bearer-only chain, so a session gets 401
- * first. The check stays as defence in depth for any non-JWT authentication added later.)
+ * <p>Fails closed (threat #52): an authenticated request with no usable tenant gets 403 instead of running
+ * under {@link TenantContext#UNRESOLVED_TENANT}, which would otherwise be one shared, writable tenant for
+ * every tenant-less caller. Unauthenticated requests pass through so Spring Security answers them with 401.
  */
 @Component
 public class TenantFilter extends OncePerRequestFilter {
@@ -42,7 +37,7 @@ public class TenantFilter extends OncePerRequestFilter {
             String tenantId = resolveTenant(auth);
             if (tenantId != null) {
                 TenantContext.setTenantId(tenantId);
-            } else if (isApiRequest(request) && isAuthenticated(auth)) {
+            } else if (isAuthenticated(auth)) {
                 rejectMissingTenant(response);
                 return;
             }
@@ -55,17 +50,12 @@ public class TenantFilter extends OncePerRequestFilter {
     private static String resolveTenant(Authentication auth) {
         if (auth instanceof JwtAuthenticationToken jwtAuth) {
             String tenantId = jwtAuth.getToken().getClaimAsString(TENANT_CLAIM);
-            // A claim literally equal to the sentinel is treated as missing, never as a tenant.
+            // A claim equal to the sentinel counts as missing.
             if (tenantId != null && !tenantId.isBlank() && !TenantContext.UNRESOLVED_TENANT.equals(tenantId)) {
                 return tenantId;
             }
         }
         return null;
-    }
-
-    private static boolean isApiRequest(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
-        return path.startsWith("/api/");
     }
 
     private static boolean isAuthenticated(Authentication auth) {

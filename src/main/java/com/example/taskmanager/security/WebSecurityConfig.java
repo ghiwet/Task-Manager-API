@@ -1,15 +1,15 @@
 package com.example.taskmanager.security;
 
 import com.example.taskmanager.tenant.TenantFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -21,22 +21,37 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// The migrate profile (Helm migration Job, threat #18) runs with no web server and no Keycloak
-// reachability guarantee; oauth2Login's ClientRegistrationRepository does eager OIDC issuer
-// discovery at bean-creation time, which would otherwise block that Job's startup on Keycloak.
+/**
+ * Three filter chains, most specific first:
+ * <ol>
+ *   <li>{@code actuator} — the management port and {@code /actuator/**}: stateless, no login, no rate limit.</li>
+ *   <li>{@code api} — {@code /api/**}: stateless, Bearer-JWT only, so session cookies can't call it (threat #55).</li>
+ *   <li>{@code browser} — everything else: oauth2Login sessions with CSRF on.</li>
+ * </ol>
+ * Not loaded in the {@code migrate} profile (Helm migration Job, threat #18): oauth2Login's client
+ * registration does OIDC discovery at startup, which would block that Job on Keycloak.
+ */
 @Profile("!migrate")
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 @EnableScheduling
 public class WebSecurityConfig {
+
+    private static final String[] PUBLIC_ACTUATOR_PATHS = {
+            "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus"};
 
     private final RateLimitFilter rateLimitFilter;
     private final TenantFilter tenantFilter;
@@ -47,19 +62,37 @@ public class WebSecurityConfig {
     }
 
     /**
-     * The REST API: Bearer-token-only and stateless (threat #55). It has no oauth2Login and never reads
-     * the HTTP session, so a browser's JSESSIONID cookie -- the ambient credential CSRF abuses --
-     * authenticates nothing here; a request without a valid Bearer token gets 401. With no cookie-based
-     * authentication on this chain, CSRF protection has nothing to protect, so it is disabled here only.
+     * Actuator: probes and the Prometheus scrape. Only health/info/prometheus are reachable; anything else
+     * gets a plain 403 (no login redirect, no session). Exempt from rate limiting, so kubelet probes sharing
+     * a node IP can't throttle themselves into restart loops. Matches every request on the management port,
+     * not just {@code /actuator/**}, so nothing there falls through to the browser login chain.
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http, Environment environment) throws Exception {
+        http
+                .securityMatcher(managementRequests(environment))
+                .csrf(csrf -> csrf.disable()) // stateless, read-only endpoints, no cookie auth
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(this::securityHeaders)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(PUBLIC_ACTUATOR_PATHS).permitAll()
+                        .anyRequest().denyAll()
+                );
+
+        return http.build();
+    }
+
+    /**
+     * The REST API: stateless and Bearer-token-only. With no oauth2Login and no session, a browser's
+     * JSESSIONID authenticates nothing here (401), so CSRF protection has nothing to protect (threat #55).
      */
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/**")
-                // CodeQL java/spring-disabled-csrf-protection: safe because this chain is STATELESS and
-                // authenticates only via the Authorization header (no session, no cookies).
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable()) // safe: stateless, Authorization header only
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(Customizer.withDefaults())
                 .headers(this::securityHeaders)
@@ -81,21 +114,17 @@ public class WebSecurityConfig {
     }
 
     /**
-     * Everything else: the cookie-session browser flow (oauth2Login, /dashboard, /logout), Swagger UI and
-     * actuator. CSRF protection is fully on here; there is no Bearer authentication on this chain.
+     * Everything else: the cookie-session browser flow (oauth2Login, /dashboard, /logout) and Swagger UI,
+     * with CSRF protection on.
      */
     @Bean
     @Order(2)
     public SecurityFilterChain browserSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .headers(this::securityHeaders)
-                .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
+                .addFilterAfter(rateLimitFilter, AnonymousAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        // Only the exposed actuator endpoints are public, and they're served on the
-                        // internal management port (management.server.port), not the API port. The
-                        // Security filter chain applies to that port too, hence these rules (threat #17).
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
@@ -108,6 +137,39 @@ public class WebSecurityConfig {
                 );
 
         return http.build();
+    }
+
+    /**
+     * Requests on the management port (resolved lazily: it's only known once that server starts), plus
+     * {@code /actuator/**} on any port so the API port answers it without the login chain.
+     */
+    private static RequestMatcher managementRequests(Environment environment) {
+        return request -> isManagementPort(request, environment) || isActuatorPath(request);
+    }
+
+    private static boolean isManagementPort(HttpServletRequest request, Environment environment) {
+        Integer managementPort = environment.getProperty("local.management.port", Integer.class);
+        return managementPort != null && managementPort == request.getLocalPort();
+    }
+
+    private static boolean isActuatorPath(HttpServletRequest request) {
+        String path = RequestPaths.withinApplication(request);
+        return path.equals("/actuator") || path.startsWith("/actuator/");
+    }
+
+    // Disable Boot's global servlet registration of these @Component filters; they run only in the chains.
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitFilter filter) {
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<TenantFilter> tenantFilterRegistration(TenantFilter filter) {
+        FilterRegistrationBean<TenantFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     private void securityHeaders(HeadersConfigurer<HttpSecurity> headers) {
@@ -127,14 +189,16 @@ public class WebSecurityConfig {
                         .policy("camera=(), microphone=(), geolocation=()"));
     }
 
+    /**
+     * Maps a Keycloak JWT to an authentication: principal = {@code preferred_username} (also the task
+     * owner, rather than the opaque {@code sub}), authorities = {@code realm_access.roles} with a
+     * {@code ROLE_} prefix. A token without realm roles yields no authorities.
+     */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        // Principal is the Keycloak username (so the task owner is too), not the opaque sub UUID.
         converter.setPrincipalClaimName("preferred_username");
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            // A valid token may carry no realm roles, so realm_access (or its roles entry) can be
-            // absent; treat that as no authorities instead of dereferencing null.
             Map<String, Object> realmAccess = jwt.getClaim("realm_access");
             if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
                 return List.of();
@@ -147,8 +211,7 @@ public class WebSecurityConfig {
         return converter;
     }
 
-    // Allow the React SPA (a different origin) to call the JWT-protected API. Bearer tokens travel in
-    // the Authorization header, so no credentials/cookies are needed.
+    /** Lets the React SPA (another origin) call the API; Bearer tokens need no credentials/cookies. */
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors.allowed-origins:http://localhost:5173}") List<String> allowedOrigins) {

@@ -19,10 +19,9 @@ import java.net.http.HttpResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Threat #17: actuator must not be reachable on the API port (the only port the Service/ingress
- * exposes), and on the internal management port only health/info/prometheus are exposed, with
- * health details hidden from anonymous callers. Runs a real embedded server because MockMvc never
- * sees the separate management port.
+ * Threat #17: actuator is never served on the API port (the only one the Service/ingress exposes), and the
+ * management port serves only health/info/prometheus, with health details hidden. Uses a real embedded
+ * server because MockMvc never sees the separate management port.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfig.class)
@@ -44,12 +43,11 @@ class ActuatorExposureTest extends AbstractIntegrationTest {
         int managementPort = environment.getRequiredProperty("local.management.port", Integer.class);
         assertThat(managementPort).as("actuator runs on its own port").isNotEqualTo(apiPort);
 
-        // Publicly-permitted actuator paths pass security and then find no handler on the API port.
+        // Permitted paths pass security, then find no handler on the API port.
         for (String path : new String[]{"/actuator/prometheus", "/actuator/health"}) {
             assertThat(get(apiPort, path).statusCode()).as("API port must not serve %s", path).isEqualTo(404);
         }
-        // Everything else under /actuator is no longer permitAll, so anonymous callers are stopped
-        // even before routing (401); either way it's never served.
+        // Everything else is denied before routing.
         for (String path : new String[]{"/actuator/metrics", "/actuator/env", "/actuator/heapdump"}) {
             assertThat(get(apiPort, path).statusCode()).as("API port must not serve %s", path).isNotEqualTo(200);
         }
@@ -63,14 +61,26 @@ class ActuatorExposureTest extends AbstractIntegrationTest {
         assertThat(prometheus.statusCode()).isEqualTo(200);
         assertThat(prometheus.body()).contains("jvm_memory_used_bytes");
 
-        // Health may be UP or DOWN depending on which backing services the test brings up; either
-        // way anonymous callers get the status only, never component details.
+        // UP or DOWN depending on test services; status only either way.
         HttpResponse<String> health = get(managementPort, "/actuator/health");
         assertThat(health.statusCode()).isIn(200, 503);
         assertThat(health.body()).contains("\"status\"").doesNotContain("\"components\"");
 
         for (String path : new String[]{"/actuator/metrics", "/actuator/env", "/actuator/heapdump", "/actuator/loggers"}) {
             assertThat(get(managementPort, path).statusCode()).as("%s must not be exposed", path).isNotEqualTo(200);
+        }
+    }
+
+    // Denied paths get a plain 403: no redirect to a /login this port doesn't serve, no session.
+    @Test
+    void deniedManagementRequestsGetAPlain403() throws Exception {
+        int managementPort = environment.getRequiredProperty("local.management.port", Integer.class);
+
+        for (String path : new String[]{"/actuator", "/actuator/env", "/"}) {
+            HttpResponse<String> response = get(managementPort, path);
+            assertThat(response.statusCode()).as(path).isEqualTo(403);
+            assertThat(response.headers().firstValue("Location")).as(path).isEmpty();
+            assertThat(response.headers().firstValue("Set-Cookie")).as(path).isEmpty();
         }
     }
 
