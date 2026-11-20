@@ -212,9 +212,8 @@ helm install tm helm/task-manager \
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
 The Deployment has actuator startup/readiness/liveness probes and resource limits. Actuator runs on its own
-**management port (8091)**, which the Service and ingress don't expose: only `health`, `info` and
-`prometheus` are enabled, anonymous callers see the health status without component details, and the
-API port answers `/actuator/**` with 404/401. Probes and the Prometheus scrape target 8091. Optional extras:
+**management port (8091)**, which the Service and ingress don't expose. Only `health`, `info` and `prometheus`
+are enabled, health details are hidden from anonymous callers, and probes aren't rate limited. Optional extras:
 `--set autoscaling.enabled=true` (CPU-based HPA) and `--set ingress.enabled=true --set ingress.host=...`.
 Validate without a cluster: `helm lint helm/task-manager` and `helm template tm helm/task-manager`.
 
@@ -384,13 +383,19 @@ a token the realm issued to *any* client — another app, or a built-in client l
 accepted. Keycloak adds the audience through an `oidc-audience-mapper` on the `springboot-app` and
 `taskmanager-spa` clients (`keycloak/realm-export.json`); a client without the mapper gets `401`.
 
+> **Upgrading an existing Keycloak:** `--import-realm` skips a realm that already exists, so a running
+> Keycloak keeps issuing tokens without the audience and every API call gets `401`. Recreate it to
+> re-import the realm: `docker compose up -d --force-recreate keycloak` (the compose Keycloak has no data
+> volume). In a cluster, recreate the Keycloak pod or add the mapper in the admin console.
+
 ### 🚦 Rate Limiting
 
 Requests are throttled with [Bucket4j](https://bucket4j.com/) token buckets via a `RateLimitFilter` placed
 just after JWT authentication in the security chain. Authenticated requests are keyed per JWT subject; anonymous
-requests fall back to the client IP. That IP is resolved by Tomcat (`server.forward-headers-strategy=native`), which
-trusts `X-Forwarded-For` only from a trusted proxy (`server.tomcat.remoteip.internal-proxies`) and takes the right-most
-address that isn't one, so a client can't rotate the header to get a fresh bucket on every request. Each response carries an `X-Rate-Limit-Remaining`
+requests fall back to the client IP, resolved by Tomcat (`server.forward-headers-strategy=native`). Tomcat honours
+`X-Forwarded-For` only from trusted proxies, and **trusts none by default**, so a client can't rotate the header for a
+fresh bucket. Behind an ingress, set `TRUSTED_PROXIES` (Helm `config.trustedProxies`) to a regex of its addresses.
+Actuator (probes, scrapes) is not rate limited. Each response carries an `X-Rate-Limit-Remaining`
 header; exceeded limits return `429 Too Many Requests` with a `Retry-After` header and an RFC 9457 `ProblemDetail`
 body, and increment the `rate_limit_exceeded_total` Prometheus counter. That counter is tagged by `key_type`
 and a fixed `endpoint` group (`assistant`/`register`/`api`/`other`), never the raw URI, so a throttled caller
@@ -413,9 +418,9 @@ rate-limit.registration-requests-per-minute=5     # stricter, for /api/v1/users/
 
 Task lookups use **cache-aside** with Spring Cache over Redis: `findTask` is `@Cacheable`, keyed by
 `tenant:owner:id`. Cached reads never reach Postgres, so RLS can't scope them; the tenant in the key
-does. Updates evict the entry with `@CacheEvict`. Deletes evict it in code, under the task's **actual**
-owner, because an admin can delete someone else's task and the owner is only known after the lookup.
-Either way, reads never go stale. TTL is configurable
+does. Updates and deletes evict the entry **after the transaction commits** (so a concurrent read can't
+re-cache the old row), under the task's **actual** owner, since an admin can delete someone else's task.
+TTL is configurable
 (`cache.tasks.ttl-minutes`), and the cache **fails open** — a Redis outage falls through to the database
 instead of erroring.
 
@@ -455,16 +460,16 @@ Every response sets defensive HTTP headers via the Spring Security `headers()` D
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 
-### 🍪 CSRF & Two Filter Chains
+### 🍪 CSRF & Filter Chains
 
-Security is split into two `SecurityFilterChain`s so browser cookies can never authenticate the API:
+Security is split into three `SecurityFilterChain`s, so browser cookies can never authenticate the API:
 
-- **`/api/**`**: stateless and Bearer-only (JWT resource server, `SessionCreationPolicy.STATELESS`, no
-  `oauth2Login`). It never reads or creates an HTTP session, so a logged-in browser's `JSESSIONID`, the
-  credential a CSRF attack rides on, gets `401` here. CSRF protection is off on this chain only, because
-  it has no cookie-based authentication to protect.
-- **Everything else** (`oauth2Login`, `/dashboard`, `/logout`, Swagger UI, actuator): session-based with
-  CSRF protection **on**.
+- **Actuator** (the management port and `/actuator/**`): stateless, no login, not rate limited. Only
+  `health`/`info`/`prometheus` are reachable; anything else gets `403`.
+- **`/api/**`**: stateless and Bearer-only (JWT resource server, no `oauth2Login`). It never reads or
+  creates an HTTP session, so a logged-in browser's `JSESSIONID`, the credential a CSRF attack rides on,
+  gets `401` here. CSRF protection is off on this chain only, because it has no cookies to protect.
+- **Everything else** (`oauth2Login`, `/dashboard`, `/logout`, Swagger UI): session-based with CSRF **on**.
 
 ### ✅ Input Validation
 
@@ -497,12 +502,11 @@ The tenant comes from a custom `tenant_id` claim, added in Keycloak via a user a
 mapper (see `keycloak/realm-export.json`). `current_setting('app.current_tenant', true)` returns `NULL`
 when unset, so a missing tenant context matches **no rows** (default deny) rather than erroring.
 
-A missing tenant also **fails closed** for writes. `TenantFilter` rejects any authenticated
-`/api/**` request it can't resolve a tenant for with **403**. That covers a JWT without the
-claim and an `oauth2Login` browser session, which carries no JWT. Without this, those callers
-would run under the internal `__unresolved__` sentinel: reads would see nothing, but writes
-under it would succeed. As a database backstop, `V10` adds `CHECK (tenant_id <> '__unresolved__')`
-to every tenant-scoped table, so no code path can ever write a row into that shared bucket.
+A missing tenant also **fails closed** for writes. `TenantFilter` rejects an authenticated `/api/**`
+request whose JWT has no usable `tenant_id` with **403** (browser sessions never authenticate `/api/**`;
+they get `401`). Otherwise such callers would run under the internal `__unresolved__` sentinel: reads
+would see nothing, but writes would succeed. As a database backstop, `V10` adds
+`CHECK (tenant_id <> '__unresolved__')` to every tenant-scoped table.
 
 **Two database roles** make this airtight (RLS does not apply to a table's owner or a superuser):
 
