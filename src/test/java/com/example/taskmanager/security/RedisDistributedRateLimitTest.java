@@ -3,6 +3,7 @@ package com.example.taskmanager.security;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -32,10 +33,11 @@ class RedisDistributedRateLimitTest {
 
     @Test
     void limitIsSharedAcrossInstances() {
-        String host = redis.getHost();
-        int port = redis.getMappedPort(6379);
-        RateLimiterBackend instanceA = new RateLimiterBackend(host, port, "");
-        RateLimiterBackend instanceB = new RateLimiterBackend(host, port, "");
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("spring.data.redis.host", redis.getHost())
+                .withProperty("spring.data.redis.port", String.valueOf(redis.getMappedPort(6379)));
+        RateLimiterBackend instanceA = new RateLimiterBackend(environment);
+        RateLimiterBackend instanceB = new RateLimiterBackend(environment);
         try {
             String key = "user:shared-across-instances";
             int limit = 5;
