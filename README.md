@@ -179,7 +179,8 @@ export OPENAI_API_KEY=sk-...
 ```
 
 ### 🔄 CI/CD
-GitHub Actions runs the build + full test suite on every push and PR (`ci.yml`). Pushing a version tag
+GitHub Actions runs the build + full test suite on every push and PR (`ci.yml`), plus a parallel `frontend`
+job (Node 24: `npm ci`, lint, Vitest, `tsc -b` + Vite build). Pushing a version tag
 publishes a container image to GitHub Container Registry (`release.yml`):
 ```bash
 git tag v1.0.1 && git push origin v1.0.1   # → ghcr.io/ghiwet/task-manager-api:1.0.1 (+ :latest)
@@ -671,6 +672,7 @@ cd frontend
 cp .env.example .env.local          # API base + Keycloak authority/client id
 npm install
 npm run dev                          # http://localhost:5173
+npm test                             # Vitest unit tests (also run in CI)
 ```
 Requires the backing services (`docker compose up -d`) and the app (`./mvnw spring-boot:run`) running, so
 Keycloak (`:8082`) and the API (`:8080`) are reachable. The access token is injected as a Bearer header;
