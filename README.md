@@ -173,6 +173,11 @@ broker starts (see "Kafka Authentication" under Security Hardening below), so th
 ###  ▶️ Run Application
 `./mvnw spring-boot:run`
 
+Run it from the repo root: Flyway's owner-role credentials come from `config/application.properties`
+(dev values matching docker-compose), which Spring Boot loads from the working directory. They are never
+packaged into the jar or image (threat #18), so a container must be given `SPRING_FLYWAY_USER`/`_PASSWORD`
+(the Helm migration Job does this).
+
 For the AI assistant's generation step, set an OpenAI key first (everything else runs without it):
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -210,6 +215,7 @@ Deployment's `"1"`) makes the app wait for it to reach `Succeeded` before starti
 ```bash
 helm install tm helm/task-manager \
   --set image.tag=1.0.1 \
+  --set secrets.flywayPassword=...             # Postgres owner password: required, no default
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
 The Deployment has actuator startup/readiness/liveness probes and resource limits. Actuator runs on its own
@@ -226,7 +232,7 @@ kind create cluster --name tm
 kind load docker-image task-manager:local --name tm
 
 HOST_IP=$(ipconfig getifaddr en0)   # macOS; use `hostname -I` on Linux
-helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082
+helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082 --set secrets.flywayPassword=taskpass   # compose Postgres's dev password
 
 kubectl get pods -w                                  # wait for 1/1 Ready
 kubectl port-forward deploy/tm-task-manager 8091:8091   # actuator: management port, not in the Service
@@ -246,8 +252,12 @@ fully (unlike the compose+kind setup above).
 
 Run it in three steps — the local image is loaded **after** the cluster exists so the app's pods find it
 without pulling from GHCR:
+The Postgres owner (Flyway) password has no default: copy `terraform.tfvars.example` to the gitignored
+`terraform.tfvars` and set it to the same value as `SPRING_FLYWAY_PASSWORD` in the migration SealedSecret
+(re-seal it if you choose a new one; see "Secrets" below).
 ```bash
 cd terraform
+cp terraform.tfvars.example terraform.tfvars   # then set postgres_owner_password
 terraform init
 
 # 1. create just the cluster
@@ -334,7 +344,7 @@ kubectl create secret generic task-manager-task-manager-secret -n task-manager \
   | kubeseal --cert sealed-secrets/tls.crt --format yaml \
   > argocd/secrets/task-manager-sealedsecret.yaml
 
-# migration secret (Flyway's owner-role password only)
+# migration secret (Flyway's owner-role password only; must equal terraform.tfvars postgres_owner_password)
 kubectl create secret generic task-manager-task-manager-migration-secret -n task-manager \
   --from-literal=SPRING_FLYWAY_PASSWORD=... \
   --dry-run=client -o yaml \

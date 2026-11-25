@@ -19,8 +19,9 @@ variable "postgres_user" {
 }
 
 variable "postgres_password" {
-  type    = string
-  default = "taskpass"
+  description = "Owner role password; no default, so a dev value can't reach a real cluster (threat #18)."
+  type        = string
+  sensitive   = true
 }
 
 variable "redis_image" {

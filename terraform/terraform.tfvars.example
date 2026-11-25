@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# Must match SPRING_FLYWAY_PASSWORD in argocd/secrets/task-manager-migration-sealedsecret.yaml.
+postgres_owner_password = "change-me"

@@ -51,7 +51,8 @@ config:
 secrets:
   create: true
   datasourcePassword: app_rls_pass
-  flywayPassword: taskpass
+  # Owner-role (Flyway) password; no default, required when secrets.create=true (threat #18).
+  flywayPassword: ""
   # Full JAAS config line, not just a password -- spring.kafka.properties.sasl.jaas.config embeds
   # both the username and password in one string, so the whole value has to live in the Secret.
   kafkaSaslJaasConfig: >-

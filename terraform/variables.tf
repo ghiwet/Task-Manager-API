@@ -10,5 +10,11 @@ variable "namespace" {
   default     = "task-manager"
 }
 
+variable "postgres_owner_password" {
+  description = "Postgres owner (Flyway) role password. No default (threat #18): set it in terraform.tfvars (gitignored); it must match the migration SealedSecret."
+  type        = string
+  sensitive   = true
+}
+
 # The app's image and config are now declared in the Argo CD Application (argocd/applications),
 # not passed from Terraform — Terraform only bootstraps the cluster, backing services, and Argo CD.

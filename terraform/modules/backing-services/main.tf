@@ -50,6 +50,17 @@ locals {
 }
 
 # ---------------- Postgres (pgvector: the vector extension the V6 migration needs) ----------------
+# Owner password in a Secret, not inline in the Deployment spec.
+resource "kubernetes_secret" "postgres_owner" {
+  metadata {
+    name      = "postgres-owner"
+    namespace = var.namespace
+  }
+  data = {
+    POSTGRES_PASSWORD = var.postgres_password
+  }
+}
+
 resource "kubernetes_deployment" "postgres" {
   metadata {
     name      = "postgres"
@@ -74,8 +85,13 @@ resource "kubernetes_deployment" "postgres" {
             value = var.postgres_user
           }
           env {
-            name  = "POSTGRES_PASSWORD"
-            value = var.postgres_password
+            name = "POSTGRES_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres_owner.metadata[0].name
+                key  = "POSTGRES_PASSWORD"
+              }
+            }
           }
           port { container_port = 5432 }
           readiness_probe {
