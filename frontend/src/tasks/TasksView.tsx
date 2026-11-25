@@ -5,6 +5,7 @@ import { hasAdminRole } from '../auth/roles.ts';
 import { useCreateTask, useDeleteTask, useSearchTasks, useTasks, useUpdateTask } from './hooks.ts';
 import { TaskItem } from './TaskItem.tsx';
 import { AdminTasks } from './AdminTasks.tsx';
+import { Highlighted } from './Highlighted.tsx';
 
 export function TasksView() {
   const isAdmin = hasAdminRole(useAuth().user?.access_token);
@@ -97,9 +98,8 @@ export function TasksView() {
           {search.error && <p className="error">Search failed: {search.error.message}</p>}
           <ul className="task-list">
             {search.data?.results.map((r) => (
-              // highlights are HTML-escaped server-side; only the <em> match tags are live
               <li key={r.id} className="task-item">
-                <span dangerouslySetInnerHTML={{ __html: r.highlights[0] ?? r.title }} />
+                <Highlighted fragment={r.highlights[0]} fallback={r.title} />
               </li>
             ))}
           </ul>

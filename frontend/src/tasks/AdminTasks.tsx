@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAllTasks, useDeleteTask, useSearchAllTasks } from './hooks.ts';
+import { Highlighted } from './Highlighted.tsx';
 
 export function AdminTasks() {
   const all = useAllTasks();
@@ -31,8 +32,7 @@ export function AdminTasks() {
           <ul className="task-list">
             {search.data?.results.map((r) => (
               <li key={r.id} className="task-item">
-                {/* highlights are HTML-escaped server-side; only the <em> match tags are live */}
-                <span dangerouslySetInnerHTML={{ __html: r.highlights[0] ?? r.title }} />
+                <Highlighted fragment={r.highlights[0]} fallback={r.title} />
                 <span className="task-owner muted">owner: {r.owner}</span>
                 <button
                   type="button"

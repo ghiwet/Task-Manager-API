@@ -662,7 +662,9 @@ product. It authenticates against Keycloak with **Authorization Code + PKCE** (p
 client) and calls the JWT-protected API cross-origin (CORS). Tasks are fetched/mutated with **TanStack
 Query**; features: sign-in/out, list, create, complete-toggle, delete, and full-text search with
 highlighting. Admins get an **"All tasks"** view — every task in the tenant (with owner) plus
-tenant-wide search — to find and delete others' tasks.
+tenant-wide search — to find and delete others' tasks. Search highlights are never injected as HTML:
+`parseHighlight` treats only the `<em>` match markers as markup and React renders everything else as
+text, so a task title like `<img onerror=…>` shows up literally (threat #3).
 
 ```bash
 cd frontend
