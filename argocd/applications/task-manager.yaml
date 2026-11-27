@@ -29,6 +29,7 @@ spec:
             tag: "1.0.1"
           secrets:
             create: false
+            revision: "2"             # bump after re-sealing: re-runs the migration, rolls the pods
   destination:
     server: https://kubernetes.default.svc
     namespace: task-manager           # same namespace as the backing services (created by Terraform)

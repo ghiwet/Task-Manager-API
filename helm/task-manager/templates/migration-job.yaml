@@ -8,7 +8,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ printf "%s-migrate-%s" (include "task-manager.fullname" .) (.Values.image.tag | default .Chart.AppVersion | replace "." "-" | trunc 20 | trimSuffix "-") }}
+  # Per image tag and secrets.revision: a new tag or a bumped revision is a new Job, so Flyway re-runs
+  # (R__app_rls_password applies a rotated password).
+  name: {{ printf "%s-migrate-%s-r%s" (include "task-manager.fullname" .) (.Values.image.tag | default .Chart.AppVersion | replace "." "-" | trunc 20 | trimSuffix "-") (toString .Values.secrets.revision) | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "task-manager.labels" . | nindent 4 }}
   annotations:

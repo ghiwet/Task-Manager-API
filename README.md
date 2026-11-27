@@ -178,7 +178,10 @@ Run it from the repo root: Flyway's owner-role credentials and the app's `app_rl
 working directory. They are never packaged into the jar or image (threat #18), so a container must be given
 `SPRING_FLYWAY_USER`/`_PASSWORD` and `SPRING_DATASOURCE_PASSWORD` (the Helm chart does this). Flyway applies
 the datasource password to the `app_rls` role (repeatable migration `R__app_rls_password`), so the role
-and the app always agree, and changing the value rotates it on the next migration.
+and the app always agree. To rotate it, change the value and bump Helm's `secrets.revision` (or ship a new
+image tag): that re-runs the migration Job, which applies the new password, then rolls the app pods.
+The value may only use printable ASCII without `'` or `\` (`AppRlsPasswordGuard` stops the app before
+Flyway runs otherwise), since the migration applies it as a SQL literal.
 
 For the AI assistant's generation step, set an OpenAI key first (everything else runs without it):
 ```bash
@@ -359,6 +362,10 @@ kubectl create secret generic task-manager-task-manager-migration-secret -n task
 To change **one** key without re-entering the others, merge it in instead (`kubeseal --cert sealed-secrets/tls.crt
 --merge-into argocd/secrets/task-manager-sealedsecret.yaml` on a Secret holding just that key). Either way,
 keep the `argocd.argoproj.io/sync-wave: "-1"` annotation, which a freshly generated file doesn't have.
+After re-sealing, bump `secrets.revision` in `argocd/applications/task-manager.yaml`: it re-runs the
+migration Job (so a new `app_rls` password reaches the role) and rolls the app pods onto the new Secret.
+The chart uses this counter instead of a `checksum/secret` annotation, since a hash of the secret values
+in pod metadata can be brute-forced by anyone who can read pods.
 > `sealed-secrets/tls.key` (the controller's private key) is gitignored; only the public cert is
 > committed. Clone without the key and the committed SealedSecret can't be decrypted — generate your
 > own key and re-seal.

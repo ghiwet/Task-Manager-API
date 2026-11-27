@@ -19,6 +19,9 @@ spec:
     metadata:
       labels:
         {{- include "task-manager.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Bumping secrets.revision rolls the pods onto changed secrets (no hash of the values here).
+        task-manager/secrets-revision: {{ .Values.secrets.revision | quote }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

@@ -50,8 +50,12 @@ config:
 # (argocd/secrets), so no real secret is ever committed in plaintext.
 secrets:
   create: true
+  # Bump when any secret value changes (here or in the SealedSecrets): it re-runs the migration Job,
+  # which applies a new app_rls password, then rolls the app pods onto the new values. A new
+  # image.tag does both too.
+  revision: "1"
   # Runtime app_rls password; no default, required when secrets.create=true. The migration Job
-  # applies it to the role (R__app_rls_password), so changing it here rotates it.
+  # applies it to the role (R__app_rls_password); to rotate, change it and bump revision.
   datasourcePassword: ""
   # Owner-role (Flyway) password; no default, required when secrets.create=true (threat #18).
   flywayPassword: ""
