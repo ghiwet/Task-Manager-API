@@ -504,6 +504,9 @@ Registration binds a dedicated `UserRegistrationDto` (not the raw entity), preve
   the assistant also caps each retrieved task at 4500 chars
 
 Validation failures return `400 Bad Request` with a per-field `errors` map; duplicate usernames return `409 Conflict`.
+Usernames are **global** across tenants: the existence check is a `SECURITY DEFINER` function
+(`username_taken`, `V12`) that sees every tenant (the app's own queries only see the caller's, under RLS),
+so a name taken in another tenant gets the same `409` as one taken in yours, never a `500` (threat #13).
 
 ## 🏢 Multi-Tenancy (Row-Level Security)
 

@@ -232,4 +232,26 @@ class TenantIsolationTest extends AbstractIntegrationTest {
             TenantContext.clear();
         }
     }
+
+    // Threat #13: usernames are global; a name held by another tenant must answer exactly like one held here.
+    @Test
+    void registeringAUsernameTakenInAnyTenantGivesTheSame409() throws Exception {
+        String name = "shared-" + System.nanoTime() % 1_000_000;
+        String body = "{\"username\":\"" + name + "\",\"password\":\"Str0ng!Pass\"}";
+
+        mockMvc.perform(post("/api/v1/users/register").with(user("registrar", TENANT_A))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isCreated());
+
+        String sameTenant = mockMvc.perform(post("/api/v1/users/register").with(user("registrar", TENANT_A))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+        String otherTenant = mockMvc.perform(post("/api/v1/users/register").with(user("registrar", TENANT_B))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertEquals(sameTenant, otherTenant, "same response whichever tenant holds the name");
+    }
 }

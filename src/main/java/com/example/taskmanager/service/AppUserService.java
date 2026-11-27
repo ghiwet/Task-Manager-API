@@ -8,6 +8,7 @@ import com.example.taskmanager.exception.AppUserNotFoundException;
 import com.example.taskmanager.model.AppUser;
 import com.example.taskmanager.repository.AppUserRepository;
 import com.example.taskmanager.tenant.TenantContext;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -21,6 +22,8 @@ import java.util.Set;
 
 @Service
 public class AppUserService implements UserDetailsService {
+
+    static final String USERNAME_TAKEN = "Username already taken";
 
     private final AppUserRepository userRepository;
 
@@ -55,9 +58,15 @@ public class AppUserService implements UserDetailsService {
         return userRepository.findByUsername(userName).orElse(null);
     }
 
+    /**
+     * Registers a user in the caller's tenant. Usernames are global, so the existence check spans all
+     * tenants, and a name taken in another tenant gets the same 409 as one taken in this tenant (threat
+     * #13). A concurrent registration that slips past the check hits the UNIQUE constraint and gets the
+     * same 409, not a 500.
+     */
     public AppUser registerNewUser(AppUser newUser) {
-        if (userRepository.findByUsername(newUser.getUsername()).isPresent()) {
-            throw new IllegalStateException("Username already taken");
+        if (userRepository.isUsernameTaken(newUser.getUsername())) {
+            throw new IllegalStateException(USERNAME_TAKEN);
         }
 
         newUser.setPassword(passwordEncoder.encode(newUser.getPassword()));
@@ -68,7 +77,14 @@ public class AppUserService implements UserDetailsService {
             newUser.setRoles(Set.of(Role.ROLE_USER));
         }
 
-        return userRepository.save(newUser);
+        try {
+            return userRepository.saveAndFlush(newUser);
+        } catch (DataIntegrityViolationException e) {
+            if (userRepository.isUsernameTaken(newUser.getUsername())) {
+                throw new IllegalStateException(USERNAME_TAKEN, e);
+            }
+            throw e;
+        }
     }
 
     public List<AppUser> getAllUsers() {
