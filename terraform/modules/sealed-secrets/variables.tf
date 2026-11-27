@@ -26,3 +26,8 @@ variable "kubeconfig_path" {
   description = "Kubeconfig of the target cluster, used by the key-seeding kubectl (not the default context)."
   type        = string
 }
+
+variable "cluster_endpoint" {
+  description = "API endpoint of the target cluster; a change (cluster recreated) re-seeds the sealing key."
+  type        = string
+}

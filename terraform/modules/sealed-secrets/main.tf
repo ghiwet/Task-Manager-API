@@ -24,6 +24,8 @@ resource "null_resource" "sealing_key" {
     cert_hash = filesha256(var.sealing_cert_path)
     key_hash  = filesha256(var.sealing_key_path)
     namespace = var.namespace
+    # A recreated cluster gets a new API endpoint, so it's re-seeded rather than trusting old state.
+    cluster = var.cluster_endpoint
   }
 
   # Point kubectl at the kind cluster, not the default context; taking the kubeconfig from the
