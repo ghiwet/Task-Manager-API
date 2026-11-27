@@ -3,6 +3,7 @@ package com.example.taskmanager.exception;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -77,6 +78,15 @@ public class GlobalExceptionHandler {
         meterRegistry.counter("http.errors.total", "type", "ObjectOptimisticLockingFailureException", "status", "409").increment();
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
                 "The resource was modified by another request. Reload the latest version and retry.");
+    }
+
+    // A write that breaks a DB constraint is the client's conflict, not a server error; no SQL is echoed.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        meterRegistry.counter("http.errors.total", "type", "DataIntegrityViolationException", "status", "409").increment();
+        // The cause can quote row values (threat #35), so only at debug.
+        log.debug("Constraint violation", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The request conflicts with existing data.");
     }
 
     @ExceptionHandler(Exception.class)

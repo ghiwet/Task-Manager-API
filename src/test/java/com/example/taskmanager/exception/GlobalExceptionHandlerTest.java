@@ -2,6 +2,7 @@ package com.example.taskmanager.exception;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -32,5 +33,14 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.CONFLICT.value(), problem.getStatus());
         assertNotNull(problem.getDetail());
+    }
+
+    @Test
+    void constraintViolationMapsToConflictWithoutLeakingSql() {
+        ProblemDetail problem = handler.handleDataIntegrity(new DataIntegrityViolationException(
+                "ERROR: new row violates check constraint \"chk_tasks_description_length\""));
+
+        assertEquals(HttpStatus.CONFLICT.value(), problem.getStatus());
+        assertFalse(String.valueOf(problem.getDetail()).contains("constraint"));
     }
 }
