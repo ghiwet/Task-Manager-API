@@ -34,6 +34,7 @@ module "sealed_secrets" {
   source            = "./modules/sealed-secrets"
   sealing_cert_path = local.sealing_cert_path
   sealing_key_path  = local.sealing_key_path
+  kubeconfig_path   = module.cluster.kubeconfig_path
 }
 
 locals {

@@ -21,3 +21,8 @@ variable "sealing_key_path" {
   type        = string
   default     = ""
 }
+
+variable "kubeconfig_path" {
+  description = "Kubeconfig of the target cluster, used by the key-seeding kubectl (not the default context)."
+  type        = string
+}

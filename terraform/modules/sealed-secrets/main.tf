@@ -26,7 +26,13 @@ resource "null_resource" "sealing_key" {
     namespace = var.namespace
   }
 
+  # Point kubectl at the kind cluster, not the default context; taking the kubeconfig from the
+  # cluster module also makes this wait for the cluster to exist.
   provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      KUBECONFIG = var.kubeconfig_path
+    }
     command = <<-EOT
       set -euo pipefail
       kubectl create secret tls sealed-secrets-key-bootstrap \
