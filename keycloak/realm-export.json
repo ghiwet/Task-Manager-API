@@ -22,7 +22,7 @@
         "enabled": true,
         "publicClient": false,
         "secret": "secret123",
-        "redirectUris": ["http://localhost:8080/swagger-ui/oauth2-redirect.html"],
+        "redirectUris": ["http://localhost:8080/swagger-ui/oauth2-redirect.html", "http://localhost:8080/login/oauth2/code/keycloak"],
         "protocol": "openid-connect",
         "standardFlowEnabled": true,
         "directAccessGrantsEnabled": true,
