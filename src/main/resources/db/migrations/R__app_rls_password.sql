@@ -3,7 +3,8 @@
 -- role and the app's connection always use the same secret. Flyway re-runs this repeatable migration
 -- whenever the resolved value changes, which is how the password is rotated.
 -- Flyway doesn't replace placeholders inside dollar-quoted bodies, so the value goes in through a
--- transaction-local setting (SET returns no rows, so nothing is echoed). It must not contain a single quote.
+-- transaction-local setting (SET returns no rows, so nothing is echoed). AppRlsPasswordGuard rejects
+-- quotes, backslashes and control characters before Flyway runs.
 
 SET LOCAL taskmanager.app_rls_password = '${app_rls_password}';
 
