@@ -394,6 +394,14 @@ a token the realm issued to *any* client — another app, or a built-in client l
 accepted. Keycloak adds the audience through an `oidc-audience-mapper` on the `springboot-app` and
 `taskmanager-spa` clients (`keycloak/realm-export.json`); a client without the mapper gets `401`.
 
+### 🔒 Login Brute-force Protection
+
+Keycloak's brute-force detection is on for `myrealm` (threat #1): after **5** failed logins an account is
+locked temporarily — 60s, growing per lockout up to 15 min, failures reset after 12h — and logins faster
+than 1s apart add a 60s wait. A locked account gets the same `Invalid user credentials` error as a wrong
+password, so lockouts don't reveal which usernames exist. Admins can unlock a user under
+*Users → user → Brute force*. Local registration (`/api/v1/users/register`) has its own strict rate limit.
+
 > **Upgrading an existing Keycloak:** `--import-realm` skips a realm that already exists, so a running
 > Keycloak keeps issuing tokens without the audience and every API call gets `401`. Recreate it to
 > re-import the realm: `docker compose up -d --force-recreate keycloak` (the compose Keycloak has no data
