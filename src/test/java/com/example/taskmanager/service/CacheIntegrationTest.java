@@ -15,12 +15,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,6 +57,9 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private StringRedisTemplate redis;
 
     // Services stamp the bound tenant; the unbound sentinel is rejected by V10 (threat #52).
     @BeforeEach
@@ -138,5 +147,28 @@ class CacheIntegrationTest extends AbstractIntegrationTest {
         });
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(cache.get(key)).as("evicted after commit").isNull());
+    }
+
+    // Threat #28: values are stored as JSON, and a planted JDK-serialized value is never deserialized.
+    @Test
+    void cacheStoresJsonAndIgnoresJdkSerializedValues() throws IOException {
+        TaskDto created = taskService.createTask(new TaskCreateDto("json-cached", "desc", false), OWNER);
+        Long id = created.getId();
+        byte[] redisKey = ("tasks::" + TaskService.cacheKey(OWNER, id)).getBytes(StandardCharsets.UTF_8);
+
+        ByteArrayOutputStream jdk = new ByteArrayOutputStream();
+        try (ObjectOutputStream out = new ObjectOutputStream(jdk)) {
+            out.writeObject(new HashMap<>());
+        }
+        redis.execute(connection -> connection.stringCommands().set(redisKey, jdk.toByteArray()), true);
+
+        assertThat(taskService.findTask(id, OWNER).getTitle())
+                .as("planted value is a miss; the read falls through to the database").isEqualTo("json-cached");
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            byte[] stored = redis.execute(connection -> connection.stringCommands().get(redisKey), true);
+            assertThat(new String(stored, StandardCharsets.UTF_8))
+                    .as("overwritten with plain JSON, no type info")
+                    .startsWith("{").contains("\"title\":\"json-cached\"").doesNotContain("@class");
+        });
     }
 }

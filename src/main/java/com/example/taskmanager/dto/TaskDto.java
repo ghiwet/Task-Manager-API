@@ -3,10 +3,8 @@ package com.example.taskmanager.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-import java.io.Serializable;
-
 @Data
-public class TaskDto implements Serializable {   // cached in Redis (cache-aside)
+public class TaskDto {   // cached in Redis as JSON (CacheConfig)
     private Long id;
     private Integer version;
 

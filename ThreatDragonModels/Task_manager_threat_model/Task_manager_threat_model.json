@@ -1721,7 +1721,7 @@
                   "status": "Open",
                   "severity": "Medium",
                   "description": "Without AUTH/ACLs any pod in the cluster can overwrite cached task objects (served to users as truth) or delete rate-limit buckets. If JDK serialization is used for values, writing a gadget payload can become RCE in the API.",
-                  "mitigation": "Enable Redis ACL user + TLS, NetworkPolicy to API pods only, and use a JSON serializer (GenericJackson2JsonRedisSerializer with a restricted type validator) instead of JDK serialization.",
+                  "mitigation": "Enable Redis ACL user + TLS, NetworkPolicy to API pods only, and use a JSON serializer (GenericJackson2JsonRedisSerializer with a restricted type validator) instead of JDK serialization. UPDATE: the cache now stores JSON bound to TaskDto (JacksonJsonRedisSerializer, no type info) instead of JDK serialization, so a planted value can't become a gadget (RCE path closed; CacheIntegrationTest plants a JDK payload and checks it's a miss). NetworkPolicies (#51) limit who reaches Redis. Still open: Redis has no AUTH/ACL or TLS, so an in-cluster attacker can still edit cached TaskDto values or reset rate-limit buckets.",
                   "modelType": "STRIDE",
                   "number": 28,
                   "score": "",
