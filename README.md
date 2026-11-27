@@ -173,10 +173,12 @@ broker starts (see "Kafka Authentication" under Security Hardening below), so th
 ###  ▶️ Run Application
 `./mvnw spring-boot:run`
 
-Run it from the repo root: Flyway's owner-role credentials come from `config/application.properties`
-(dev values matching docker-compose), which Spring Boot loads from the working directory. They are never
-packaged into the jar or image (threat #18), so a container must be given `SPRING_FLYWAY_USER`/`_PASSWORD`
-(the Helm migration Job does this).
+Run it from the repo root: Flyway's owner-role credentials and the app's `app_rls` password come from
+`config/application.properties` (dev values matching docker-compose), which Spring Boot loads from the
+working directory. They are never packaged into the jar or image (threat #18), so a container must be given
+`SPRING_FLYWAY_USER`/`_PASSWORD` and `SPRING_DATASOURCE_PASSWORD` (the Helm chart does this). Flyway applies
+the datasource password to the `app_rls` role (repeatable migration `R__app_rls_password`), so the role
+and the app always agree, and changing the value rotates it on the next migration.
 
 For the AI assistant's generation step, set an OpenAI key first (everything else runs without it):
 ```bash
@@ -215,7 +217,8 @@ Deployment's `"1"`) makes the app wait for it to reach `Succeeded` before starti
 ```bash
 helm install tm helm/task-manager \
   --set image.tag=1.0.1 \
-  --set secrets.flywayPassword=...             # Postgres owner password: required, no default
+  --set secrets.flywayPassword=... \
+  --set secrets.datasourcePassword=... \
   --set secrets.openaiApiKey=$OPENAI_API_KEY   # supply real secrets via --set or a private values file
 ```
 The Deployment has actuator startup/readiness/liveness probes and resource limits. Actuator runs on its own
@@ -232,7 +235,7 @@ kind create cluster --name tm
 kind load docker-image task-manager:local --name tm
 
 HOST_IP=$(ipconfig getifaddr en0)   # macOS; use `hostname -I` on Linux
-helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082 --set secrets.flywayPassword=taskpass   # compose Postgres's dev password
+helm install tm helm/task-manager --set image.repository=task-manager --set image.tag=local --set image.pullPolicy=Never --set config.datasourceUrl=jdbc:postgresql://$HOST_IP:5433/taskdb --set config.kafkaBootstrapServers=$HOST_IP:29092 --set config.keycloakBaseUrl=http://$HOST_IP:8082 --set secrets.flywayPassword=taskpass --set secrets.datasourcePassword=app_rls_pass   # compose's dev passwords
 
 kubectl get pods -w                                  # wait for 1/1 Ready
 kubectl port-forward deploy/tm-task-manager 8091:8091   # actuator: management port, not in the Service

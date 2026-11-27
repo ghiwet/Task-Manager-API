@@ -50,7 +50,9 @@ config:
 # (argocd/secrets), so no real secret is ever committed in plaintext.
 secrets:
   create: true
-  datasourcePassword: app_rls_pass
+  # Runtime app_rls password; no default, required when secrets.create=true. The migration Job
+  # applies it to the role (R__app_rls_password), so changing it here rotates it.
+  datasourcePassword: ""
   # Owner-role (Flyway) password; no default, required when secrets.create=true (threat #18).
   flywayPassword: ""
   # Full JAAS config line, not just a password -- spring.kafka.properties.sasl.jaas.config embeds
