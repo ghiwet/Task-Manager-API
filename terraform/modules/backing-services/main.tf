@@ -25,27 +25,29 @@ locals {
   # Shared with the init container below so its one-time format step generates the same
   # server.properties the main container would (see docker-compose.yml for the matching setup).
   kafka_common_env = {
-    KAFKA_NODE_ID                                   = "1"
-    KAFKA_PROCESS_ROLES                             = "broker,controller"
-    KAFKA_LISTENERS                                 = "SASL://:9092,CONTROLLER://:9093"
-    KAFKA_ADVERTISED_LISTENERS                      = "SASL://kafka:9092"
-    KAFKA_CONTROLLER_QUORUM_VOTERS                  = "1@localhost:9093"
-    KAFKA_CONTROLLER_LISTENER_NAMES                 = "CONTROLLER"
-    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP            = "CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT"
-    KAFKA_INTER_BROKER_LISTENER_NAME                = "SASL"
-    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR          = "1"
-    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR  = "1"
-    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR             = "1"
-    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS          = "0"
-    CLUSTER_ID                                      = "MkU3OEVBNTcwNTJENDM2Qk"
-    KAFKA_LOG_DIRS                                   = "/var/lib/kafka/data"
-    KAFKA_SASL_ENABLED_MECHANISMS                   = "SCRAM-SHA-512"
-    KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL      = "SCRAM-SHA-512"
-    KAFKA_AUTHORIZER_CLASS_NAME                     = "org.apache.kafka.metadata.authorizer.StandardAuthorizer"
+    KAFKA_NODE_ID                                  = "1"
+    KAFKA_PROCESS_ROLES                            = "broker,controller"
+    KAFKA_LISTENERS                                = "SASL://:9092,CONTROLLER://:9093"
+    KAFKA_ADVERTISED_LISTENERS                     = "SASL://kafka:9092"
+    KAFKA_CONTROLLER_QUORUM_VOTERS                 = "1@localhost:9093"
+    KAFKA_CONTROLLER_LISTENER_NAMES                = "CONTROLLER"
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP           = "CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT"
+    KAFKA_INTER_BROKER_LISTENER_NAME               = "SASL"
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR         = "1"
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR = "1"
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR            = "1"
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS         = "0"
+    CLUSTER_ID                                     = "MkU3OEVBNTcwNTJENDM2Qk"
+    KAFKA_LOG_DIRS                                 = "/var/lib/kafka/data"
+    KAFKA_SASL_ENABLED_MECHANISMS                  = "SCRAM-SHA-512"
+    KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL     = "SCRAM-SHA-512"
+    KAFKA_AUTHORIZER_CLASS_NAME                    = "org.apache.kafka.metadata.authorizer.StandardAuthorizer"
     # Only one real trust domain here (the app, producer + all consumer-group roles) plus the
     # broker's own inter-broker identity -- super-user status replaces hand-written per-topic ACLs.
-    KAFKA_SUPER_USERS                               = "User:inter-broker;User:taskmanager-app"
-    KAFKA_OPTS                                       = "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+    # ANONYMOUS is the in-pod CONTROLLER listener (never exposed); without it the broker can't
+    # register with its own controller and crash-loops. Matches docker-compose.yml.
+    KAFKA_SUPER_USERS = "User:ANONYMOUS;User:inter-broker;User:taskmanager-app"
+    KAFKA_OPTS        = "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
   }
 }
 
@@ -268,13 +270,22 @@ resource "kubernetes_deployment" "kafka" {
           command = ["/bin/sh", "-c"]
           args = [<<-EOT
             set -e
-            /opt/kafka/bin/kafka-run-class.sh kafka.docker.KafkaDockerWrapper setup \
-              --default-configs-dir /etc/kafka/docker \
-              --mounted-configs-dir /mnt/shared/config \
-              --final-configs-dir /opt/kafka/config
+            # Format from a minimal file, as docker-compose does: KafkaDockerWrapper setup formats the
+            # storage itself, which made the --add-scram format below a no-op (no users seeded).
+            cat > /tmp/format.properties <<PROPS
+            process.roles=broker,controller
+            node.id=1
+            controller.quorum.voters=1@localhost:9093
+            controller.listener.names=CONTROLLER
+            listeners=SASL://:9092,CONTROLLER://:9093
+            advertised.listeners=SASL://kafka:9092
+            listener.security.protocol.map=CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT
+            inter.broker.listener.name=SASL
+            log.dirs=/var/lib/kafka/data
+            PROPS
             /opt/kafka/bin/kafka-storage.sh format \
               --cluster-id "$CLUSTER_ID" \
-              --config /opt/kafka/config/server.properties \
+              --config /tmp/format.properties \
               --ignore-formatted \
               --add-scram 'SCRAM-SHA-512=[name=inter-broker,password=inter-broker-secret]' \
               --add-scram 'SCRAM-SHA-512=[name=taskmanager-app,password=taskmanager-secret]'
