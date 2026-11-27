@@ -433,7 +433,9 @@ does. Updates and deletes evict the entry **after the transaction commits** (so 
 re-cache the old row), under the task's **actual** owner, since an admin can delete someone else's task.
 TTL is configurable
 (`cache.tasks.ttl-minutes`), and the cache **fails open** — a Redis outage falls through to the database
-instead of erroring.
+instead of erroring. Values are stored as **JSON bound to `TaskDto`**, never Java serialization, so a
+value written into Redis by someone else can't be turned into an arbitrary class on read (threat #28);
+an unreadable entry is just a logged miss.
 
 ### 🔍 Full-text Search
 
