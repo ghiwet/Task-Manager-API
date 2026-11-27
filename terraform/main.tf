@@ -48,10 +48,11 @@ resource "kubernetes_namespace" "app" {
 }
 
 module "backing_services" {
-  source            = "./modules/backing-services"
-  namespace         = kubernetes_namespace.app.metadata[0].name
-  realm_export_path = "${path.root}/../keycloak/realm-export.json"
-  postgres_password = var.postgres_owner_password
+  source             = "./modules/backing-services"
+  namespace          = kubernetes_namespace.app.metadata[0].name
+  realm_export_path  = "${path.root}/../keycloak/realm-export.json"
+  postgres_password  = var.postgres_owner_password
+  kafka_app_password = var.kafka_app_password
 }
 
 # Bootstrap the Argo CD Application (a CRD instance) — a multi-source app that syncs both the Helm

@@ -236,6 +236,18 @@ resource "kubernetes_config_map" "kafka_jaas" {
   }
 }
 
+# The app's SCRAM password in a Secret, not inline in the Deployment spec; must match the JAAS line
+# in the app's SealedSecret.
+resource "kubernetes_secret" "kafka_app_scram" {
+  metadata {
+    name      = "kafka-app-scram"
+    namespace = var.namespace
+  }
+  data = {
+    KAFKA_APP_PASSWORD = var.kafka_app_password
+  }
+}
+
 resource "kubernetes_deployment" "kafka" {
   metadata {
     name      = "kafka"
@@ -246,7 +258,11 @@ resource "kubernetes_deployment" "kafka" {
     replicas = 1
     selector { match_labels = local.kafka }
     template {
-      metadata { labels = local.kafka }
+      metadata {
+        labels = local.kafka
+        # Restart (and re-seed) the broker when the app password changes.
+        annotations = { "checksum/kafka-app-password" = sha256(var.kafka_app_password) }
+      }
       spec {
         volume {
           name = "kafka-data"
@@ -288,7 +304,7 @@ resource "kubernetes_deployment" "kafka" {
               --config /tmp/format.properties \
               --ignore-formatted \
               --add-scram 'SCRAM-SHA-512=[name=inter-broker,password=inter-broker-secret]' \
-              --add-scram 'SCRAM-SHA-512=[name=taskmanager-app,password=taskmanager-secret]'
+              --add-scram "SCRAM-SHA-512=[name=taskmanager-app,password=$KAFKA_APP_PASSWORD]"
           EOT
           ]
           dynamic "env" {
@@ -296,6 +312,15 @@ resource "kubernetes_deployment" "kafka" {
             content {
               name  = env.key
               value = env.value
+            }
+          }
+          env {
+            name = "KAFKA_APP_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.kafka_app_scram.metadata[0].name
+                key  = "KAFKA_APP_PASSWORD"
+              }
             }
           }
           volume_mount {

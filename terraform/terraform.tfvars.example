@@ -1,3 +1,5 @@
 # Copy to terraform.tfvars (gitignored) and fill in.
 # Must match SPRING_FLYWAY_PASSWORD in argocd/secrets/task-manager-migration-sealedsecret.yaml.
 postgres_owner_password = "change-me"
+# Must match the password in SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG in argocd/secrets/task-manager-sealedsecret.yaml.
+kafka_app_password = "change-me"

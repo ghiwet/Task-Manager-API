@@ -55,11 +55,10 @@ secrets:
   datasourcePassword: ""
   # Owner-role (Flyway) password; no default, required when secrets.create=true (threat #18).
   flywayPassword: ""
-  # Full JAAS config line, not just a password -- spring.kafka.properties.sasl.jaas.config embeds
-  # both the username and password in one string, so the whole value has to live in the Secret.
-  kafkaSaslJaasConfig: >-
-    org.apache.kafka.common.security.scram.ScramLoginModule required
-    username="taskmanager-app" password="taskmanager-secret";
+  # Full JAAS line (spring.kafka.properties.sasl.jaas.config embeds username and password); no
+  # default, required when secrets.create=true. E.g.
+  # org.apache.kafka.common.security.scram.ScramLoginModule required username="taskmanager-app" password="...";
+  kafkaSaslJaasConfig: ""
   keycloakClientSecret: secret123
   openaiApiKey: ""
 

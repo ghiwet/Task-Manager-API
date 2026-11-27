@@ -24,6 +24,12 @@ variable "postgres_password" {
   sensitive   = true
 }
 
+variable "kafka_app_password" {
+  description = "SCRAM password for the app's Kafka user (taskmanager-app); no default, must match the app SealedSecret's JAAS line."
+  type        = string
+  sensitive   = true
+}
+
 variable "redis_image" {
   type    = string
   default = "redis:7-alpine"

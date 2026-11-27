@@ -255,12 +255,14 @@ fully (unlike the compose+kind setup above).
 
 Run it in three steps — the local image is loaded **after** the cluster exists so the app's pods find it
 without pulling from GHCR:
-The Postgres owner (Flyway) password has no default: copy `terraform.tfvars.example` to the gitignored
-`terraform.tfvars` and set it to the same value as `SPRING_FLYWAY_PASSWORD` in the migration SealedSecret
-(re-seal it if you choose a new one; see "Secrets" below).
+The Postgres owner (Flyway) password and the app's Kafka SCRAM password have no defaults: copy
+`terraform.tfvars.example` to the gitignored `terraform.tfvars` and set `postgres_owner_password` to
+`SPRING_FLYWAY_PASSWORD` in the migration SealedSecret, and `kafka_app_password` to the password in the app
+SealedSecret's `SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG` (re-seal if you choose new ones; see "Secrets" below).
+Terraform seeds the broker's `taskmanager-app` credential from a Secret, not an inline value.
 ```bash
 cd terraform
-cp terraform.tfvars.example terraform.tfvars   # then set postgres_owner_password
+cp terraform.tfvars.example terraform.tfvars   # then set postgres_owner_password + kafka_app_password
 terraform init
 
 # 1. create just the cluster
@@ -340,7 +342,7 @@ Re-seal after changing a value (offline, against the committed cert):
 # app secret
 kubectl create secret generic task-manager-task-manager-secret -n task-manager \
   --from-literal=SPRING_DATASOURCE_PASSWORD=... \
-  --from-literal=SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG=... \
+  --from-literal=SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG=... \   # password must equal tfvars kafka_app_password
   --from-literal=KEYCLOAK_CLIENT_SECRET=... \
   --from-literal=OPENAI_API_KEY=... \
   --dry-run=client -o yaml \
@@ -354,6 +356,9 @@ kubectl create secret generic task-manager-task-manager-migration-secret -n task
   | kubeseal --cert sealed-secrets/tls.crt --format yaml \
   > argocd/secrets/task-manager-migration-sealedsecret.yaml
 ```
+To change **one** key without re-entering the others, merge it in instead (`kubeseal --cert sealed-secrets/tls.crt
+--merge-into argocd/secrets/task-manager-sealedsecret.yaml` on a Secret holding just that key). Either way,
+keep the `argocd.argoproj.io/sync-wave: "-1"` annotation, which a freshly generated file doesn't have.
 > `sealed-secrets/tls.key` (the controller's private key) is gitignored; only the public cert is
 > committed. Clone without the key and the committed SealedSecret can't be decrypted — generate your
 > own key and re-seal.
@@ -469,9 +474,14 @@ the broker's own inter-broker identity directly into the metadata log at format 
 unauthenticated. A `StandardAuthorizer` default-denies everyone except those principals (plus `ANONYMOUS`,
 needed only for the intra-cluster `CONTROLLER` listener, which is never exposed outside the broker's own pod).
 
+The app's JAAS line (username + password) is **not in the jar**: local dev gets it from
+`config/application.properties`, Kubernetes from the app Secret (Helm `secrets.kafkaSaslJaasConfig` is
+`required`; GitOps uses the SealedSecret, whose password matches Terraform's `kafka_app_password`).
+
 > Dev credentials (`taskmanager-app` / `taskmanager-secret`, etc.) are plaintext in `docker-compose.yml` and
-> `helm/task-manager/values.yaml`, same as the other local-dev defaults in this repo — rotate them for any
-> shared environment.
+> `config/application.properties`, same as the other local-dev defaults in this repo. The kind/GitOps
+> deploy uses a different, random app password. The broker's `inter-broker` credential is still a fixed
+> dev value in Terraform.
 
 ### 🔒 Security Headers
 

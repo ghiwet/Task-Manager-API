@@ -18,3 +18,9 @@ variable "postgres_owner_password" {
 
 # The app's image and config are now declared in the Argo CD Application (argocd/applications),
 # not passed from Terraform — Terraform only bootstraps the cluster, backing services, and Argo CD.
+
+variable "kafka_app_password" {
+  description = "SCRAM password for the app's Kafka user (taskmanager-app). No default: set it in terraform.tfvars (gitignored); it must match the JAAS line in the app SealedSecret."
+  type        = string
+  sensitive   = true
+}
