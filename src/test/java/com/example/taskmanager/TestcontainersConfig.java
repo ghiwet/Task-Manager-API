@@ -23,11 +23,14 @@ public class TestcontainersConfig {
     }
 
     // Point Flyway at the test container's superuser (the prod "taskuser" role doesn't exist here).
+    // The datasource password feeds R__app_rls_password; set here so tests don't depend on the
+    // working directory's config/application.properties.
     @Bean
     DynamicPropertyRegistrar flywayCredentials(PostgreSQLContainer<?> postgres) {
         return registry -> {
             registry.add("spring.flyway.user", postgres::getUsername);
             registry.add("spring.flyway.password", postgres::getPassword);
+            registry.add("spring.datasource.password", () -> "app_rls_pass");
         };
     }
 
