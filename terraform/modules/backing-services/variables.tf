@@ -28,6 +28,12 @@ variable "kafka_app_password" {
   description = "SCRAM password for the app's Kafka user (taskmanager-app); no default, must match the app SealedSecret's JAAS line."
   type        = string
   sensitive   = true
+
+  # It's spliced into kafka-storage's --add-scram '[name=...,password=...]' spec and the JAAS line.
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]{16,}$", var.kafka_app_password))
+    error_message = "kafka_app_password must be at least 16 characters of letters, digits, '_' or '-'."
+  }
 }
 
 variable "redis_image" {

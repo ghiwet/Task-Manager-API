@@ -2,4 +2,5 @@
 # Must match SPRING_FLYWAY_PASSWORD in argocd/secrets/task-manager-migration-sealedsecret.yaml.
 postgres_owner_password = "change-me"
 # Must match the password in SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG in argocd/secrets/task-manager-sealedsecret.yaml.
-kafka_app_password = "change-me"
+# At least 16 characters of letters, digits, _ or - (enforced by a validation rule).
+kafka_app_password = "change-me-to-16-plus-chars"

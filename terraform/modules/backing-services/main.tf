@@ -260,8 +260,9 @@ resource "kubernetes_deployment" "kafka" {
     template {
       metadata {
         labels = local.kafka
-        # Restart (and re-seed) the broker when the app password changes.
-        annotations = { "checksum/kafka-app-password" = sha256(var.kafka_app_password) }
+        # Restart (and re-seed) the broker when the Secret changes; its resourceVersion, not a hash of
+        # the password, which anyone who can read pods could brute-force.
+        annotations = { "task-manager/kafka-app-scram-version" = kubernetes_secret.kafka_app_scram.metadata[0].resource_version }
       }
       spec {
         volume {
@@ -288,16 +289,17 @@ resource "kubernetes_deployment" "kafka" {
             set -e
             # Format from a minimal file, as docker-compose does: KafkaDockerWrapper setup formats the
             # storage itself, which made the --add-scram format below a no-op (no users seeded).
+            # Built from the same kafka_common_env the broker runs with, so the two can't drift.
             cat > /tmp/format.properties <<PROPS
-            process.roles=broker,controller
-            node.id=1
-            controller.quorum.voters=1@localhost:9093
-            controller.listener.names=CONTROLLER
-            listeners=SASL://:9092,CONTROLLER://:9093
-            advertised.listeners=SASL://kafka:9092
-            listener.security.protocol.map=CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT
-            inter.broker.listener.name=SASL
-            log.dirs=/var/lib/kafka/data
+            process.roles=$KAFKA_PROCESS_ROLES
+            node.id=$KAFKA_NODE_ID
+            controller.quorum.voters=$KAFKA_CONTROLLER_QUORUM_VOTERS
+            controller.listener.names=$KAFKA_CONTROLLER_LISTENER_NAMES
+            listeners=$KAFKA_LISTENERS
+            advertised.listeners=$KAFKA_ADVERTISED_LISTENERS
+            listener.security.protocol.map=$KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+            inter.broker.listener.name=$KAFKA_INTER_BROKER_LISTENER_NAME
+            log.dirs=$KAFKA_LOG_DIRS
             PROPS
             /opt/kafka/bin/kafka-storage.sh format \
               --cluster-id "$CLUSTER_ID" \
