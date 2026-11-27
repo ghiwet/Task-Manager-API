@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 public class AssistantService {
 
     private static final int TOP_K = 5;
+    // Rows older than V11 may be longer; cap prompt size and token cost (threat #54).
+    static final int MAX_CHARS_PER_TASK = 4500;
     private static final String SYSTEM_PROMPT = """
             You are an assistant for a task manager. Answer the user's question using only the tasks
             provided as context. If the context does not contain the answer, say you don't have that
@@ -35,7 +37,7 @@ public class AssistantService {
 
         String context = documents.isEmpty()
                 ? "(no matching tasks)"
-                : documents.stream().map(Document::getText).collect(Collectors.joining("\n\n"));
+                : documents.stream().map(AssistantService::truncate).collect(Collectors.joining("\n\n"));
         String answer = chatClient.generate(SYSTEM_PROMPT, "Tasks:\n" + context + "\n\nQuestion: " + question);
 
         List<Long> retrievedTaskIds = documents.stream()
@@ -43,5 +45,10 @@ public class AssistantService {
                 .distinct()
                 .toList();
         return new AssistantResponse(answer, retrievedTaskIds);
+    }
+
+    static String truncate(Document document) {
+        String text = document.getText() == null ? "" : document.getText();
+        return text.length() <= MAX_CHARS_PER_TASK ? text : text.substring(0, MAX_CHARS_PER_TASK) + "…";
     }
 }

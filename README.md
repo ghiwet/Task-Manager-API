@@ -491,6 +491,9 @@ Registration binds a dedicated `UserRegistrationDto` (not the raw entity), preve
 
 - **username** — 3–50 chars, letters/digits/`. _ -` only
 - **password** — 8–128 chars, requiring upper- and lower-case letters, a digit, and a special character
+- **task title / description** — title 1–255 chars, description up to 4000 (also a DB `CHECK` in `V11`), so
+  one task can't inflate the outbox, Kafka, Elasticsearch, embeddings or the assistant prompt (threat #54);
+  the assistant also caps each retrieved task at 4500 chars
 
 Validation failures return `400 Bad Request` with a per-field `errors` map; duplicate usernames return `409 Conflict`.
 

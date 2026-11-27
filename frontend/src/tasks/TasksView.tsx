@@ -78,6 +78,7 @@ export function TasksView() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description (optional)"
+          maxLength={4000}
         />
         <button type="submit" disabled={busy}>
           Add

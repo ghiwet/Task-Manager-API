@@ -2,6 +2,7 @@ package com.example.taskmanager;
 
 import com.example.taskmanager.dto.TaskCreateDto;
 import com.example.taskmanager.dto.TaskDto;
+import com.example.taskmanager.model.Task;
 import com.example.taskmanager.repository.TaskRepository;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.*;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,6 +20,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -263,5 +266,43 @@ class TaskControllerTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/tasks/all")
                         .with(jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1").claim("tenant_id", "tenant-test")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden());
+    }
+
+    // Threat #54: description is capped at DESCRIPTION_MAX on create and update.
+    @Test
+    @Order(16)
+    void testDescriptionLengthIsCapped() throws Exception {
+        var user = jwt().jwt(j -> j.subject("user1").claim("preferred_username", "user1").claim("tenant_id", "tenant-test"))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+        String atLimit = "a".repeat(TaskCreateDto.DESCRIPTION_MAX);
+        String overLimit = atLimit + "a";
+
+        MvcResult created = mockMvc.perform(post("/api/v1/tasks").with(user)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(new TaskCreateDto("long", atLimit, false))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long longId = jsonMapper.readValue(created.getResponse().getContentAsString(), TaskDto.class).getId();
+
+        mockMvc.perform(post("/api/v1/tasks").with(user)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(new TaskCreateDto("too long", overLimit, false))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/v1/tasks/" + longId).with(user)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(new TaskCreateDto("too long", overLimit, false))))
+                .andExpect(status().isBadRequest());
+    }
+
+    // V11 backs the DTO limit for writes that skip validation.
+    @Test
+    @Order(17)
+    void testDatabaseRejectsOverlongDescription() {
+        Task task = new Task();
+        task.setTitle("db too long");
+        task.setDescription("a".repeat(TaskCreateDto.DESCRIPTION_MAX + 1));
+        task.setOwner("user1");
+        task.setTenantId("tenant-test");
+        assertThrows(DataIntegrityViolationException.class, () -> taskRepository.saveAndFlush(task));
     }
 }
